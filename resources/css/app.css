@@ -1,0 +1,91 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+    --font-family-base: "Calibri Light", Calibri, "Segoe UI", sans-serif;
+    --font-size-base: 0.8125rem;
+    --font-size-sm: 0.75rem;
+    --font-size-xs: 0.6875rem;
+    --font-size-page-title: 1rem;
+    --font-weight-regular: 300;
+
+    --color-bg-app: #f4f6f8;
+    --color-bg-surface: #ffffff;
+    --color-bg-subtle: #eef1f4;
+    --color-bg-table-odd: #ffffff;
+    --color-bg-table-even: #f0f3f6;
+    --color-bg-table-hover: #d9e6f2;
+    --color-bg-table-header: #e8edf2;
+    --color-border: #d0d7de;
+    --color-border-strong: #b6c0ca;
+    --color-text: #2c333a;
+    --color-text-muted: #5c6770;
+    --color-text-label: #4a5560;
+    --color-primary: #2f5d8c;
+    --color-primary-hover: #254a70;
+    --color-primary-subtle: #e4eef7;
+    --color-success: #2f6f4e;
+    --color-warning: #8a6a1f;
+    --color-danger: #9b3b3b;
+    --color-info: #2f6b8a;
+    --color-nav-bg: #1f2a33;
+    --color-nav-text: #d7dee5;
+    --color-nav-text-active: #ffffff;
+    --color-nav-hover: #2a3844;
+    --color-nav-group: #8a97a3;
+}
+
+html,
+body {
+    font-family: var(--font-family-base);
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-regular);
+    color: var(--color-text);
+    background: var(--color-bg-app);
+}
+
+.form-label,
+.p-datatable .p-datatable-thead > tr > th,
+.table-collectimate thead th {
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-regular);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--color-text-label);
+}
+
+.page-title {
+    font-size: var(--font-size-page-title);
+    font-weight: var(--font-weight-regular);
+    color: var(--color-text);
+}
+
+.nav-group-label {
+    font-size: var(--font-size-xs);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-nav-group);
+    font-weight: var(--font-weight-regular);
+}
+
+.table-collectimate .p-datatable-tbody > tr:nth-child(odd),
+.table-collectimate tbody tr:nth-child(odd) {
+    background-color: var(--color-bg-table-odd);
+}
+
+.table-collectimate .p-datatable-tbody > tr:nth-child(even),
+.table-collectimate tbody tr:nth-child(even) {
+    background-color: var(--color-bg-table-even);
+}
+
+.table-collectimate .p-datatable-tbody > tr:hover,
+.table-collectimate tbody tr:hover {
+    background-color: var(--color-bg-table-hover) !important;
+}
+
+.font-semibold,
+.font-bold,
+.font-medium {
+    font-weight: var(--font-weight-regular) !important;
+}
