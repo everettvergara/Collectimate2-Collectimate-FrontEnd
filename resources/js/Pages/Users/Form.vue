@@ -1,11 +1,10 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import InputError from '@/Components/InputError.vue';
+import { Button } from '@/Components/ui/button';
+import { Input } from '@/Components/ui/input';
+import { Select } from '@/Components/ui/select';
 import { Head, Link, useForm } from '@inertiajs/vue3';
-import Button from 'primevue/button';
-import Select from 'primevue/select';
-import InputText from 'primevue/inputtext';
-import Password from 'primevue/password';
 
 const props = defineProps({
     user: Object,
@@ -42,36 +41,36 @@ const submit = () => {
         <form class="max-w-xl space-y-4" @submit.prevent="submit">
             <div>
                 <label class="form-label block mb-1">Username</label>
-                <InputText v-model="form.username" class="w-full" />
+                <Input v-model="form.username" class="w-full" />
                 <InputError :message="form.errors.username" class="mt-1" />
             </div>
             <div>
                 <label class="form-label block mb-1">Email</label>
-                <InputText v-model="form.email" type="email" class="w-full" />
+                <Input v-model="form.email" type="email" class="w-full" />
                 <InputError :message="form.errors.email" class="mt-1" />
             </div>
             <div>
                 <label class="form-label block mb-1">Password</label>
-                <Password v-model="form.password" class="w-full" input-class="w-full" toggle-mask :feedback="false" />
+                <Input v-model="form.password" type="password" class="w-full" autocomplete="new-password" />
                 <InputError :message="form.errors.password" class="mt-1" />
             </div>
             <div>
                 <label class="form-label block mb-1">Confirm password</label>
-                <Password v-model="form.password_confirmation" class="w-full" input-class="w-full" toggle-mask :feedback="false" />
+                <Input v-model="form.password_confirmation" type="password" class="w-full" autocomplete="new-password" />
             </div>
             <div class="grid grid-cols-2 gap-4">
                 <div>
                     <label class="form-label block mb-1">First name</label>
-                    <InputText v-model="form.first_name" class="w-full" />
+                    <Input v-model="form.first_name" class="w-full" />
                 </div>
                 <div>
                     <label class="form-label block mb-1">Last name</label>
-                    <InputText v-model="form.last_name" class="w-full" />
+                    <Input v-model="form.last_name" class="w-full" />
                 </div>
             </div>
             <div>
                 <label class="form-label block mb-1">Mobile</label>
-                <InputText v-model="form.mobile" class="w-full" />
+                <Input v-model="form.mobile" class="w-full" />
             </div>
             <div>
                 <label class="form-label block mb-1">Status</label>
@@ -83,9 +82,9 @@ const submit = () => {
                 <InputError :message="form.errors.role_id" class="mt-1" />
             </div>
             <div class="flex gap-2">
-                <Button type="submit" label="Save" :loading="form.processing" />
+                <Button type="submit" :disabled="form.processing">Save</Button>
                 <Link :href="route('users.index')">
-                    <Button type="button" label="Cancel" severity="secondary" />
+                    <Button type="button" variant="secondary">Cancel</Button>
                 </Link>
             </div>
         </form>

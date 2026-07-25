@@ -39,13 +39,15 @@ CRUD + **export** per listable module. Account also has **purge**.
 ```
 users.view|create|update|delete|export
 agent_profiles.view|create|update|delete|export
-campaigns.view|create|update|archive|export
+campaigns.view|create|update|archive|delete|export
 campaign_assignments.manage
 entities.view|create|update|delete|export
 accounts.view|create|update|delete|export|purge
 comments.view|create|update|delete|export
 files.view|create|delete|export
-statuses.view|manage|export
+activity_types.view|export
+contact_types.view|export
+address_types.view|manage|export
 reports.view|export
 imports.run
 audit_logs.view|export

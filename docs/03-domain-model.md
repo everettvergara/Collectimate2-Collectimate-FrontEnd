@@ -36,11 +36,11 @@ erDiagram
   Account ||--o{ AccountAddress : has
   Account ||--o{ AccountSecondaryContact : has
   Account ||--o{ AccountSocialLink : has
+  Entity ||--o{ EntityStatus : has
+  Entity ||--o{ EntityActionCode : has
   Entity ||--o{ Comment : has
-  Entity ||--o{ StatusHistory : has
   Entity ||--o{ FileAttachment : has
-  Status ||--o{ Entity : current_or_history
-  Status ||--o{ Account : current_or_history
+  Account }o--|| EntityStatus : current
 ```
 
 ## Access domain
@@ -63,8 +63,8 @@ Future comms modules reference Agent Profile, not User.
 ### Campaign
 
 FKs: `entity_id` (required).  
-Fields: Campaign Code, Name, Description, Status. Operations: create, edit, archive.  
-Belongs to exactly one Entity. Has many Accounts. Assignment of Agent Profiles via Campaign Assignment.
+Fields: Campaign Code, Name, Description, Status. Operations: create, edit, archive, delete (hard cascade of Accounts).  
+Belongs to exactly one Entity. Has many Accounts. Assignment of Agent Profiles via Campaign Assignment. Campaign Show lists Agents (not Accounts).
 
 ### Campaign Assignment
 
@@ -74,19 +74,38 @@ FKs: `campaign_id`, `agent_profile_id` (unique pair). Assignment UI from Campaig
 
 ### Entity
 
-Top-level master: Entity Code, Name, Birthdate, optional light identity fields, Custom Fields, Status, audit actors/dates.  
-Has many Campaigns. Rich multi-contact/address/social data lives on **Account**, not as a flat Entity contacts module.
+Top-level master: Entity Code, Name, optional light identity fields, Custom Fields, audit actors/dates.  
+Has many Campaigns. Owns per-entity catalogs: **Entity Status**, **Entity Action Codes**, and **Templates** (managed on Entity View). Entity has no global Status field.  
+Rich multi-contact/address/social data lives on **Account**, not as a flat Entity contacts module.
 
-Statistics (CRM-only): created/updated by/dates, last status, last comment — no communication stats.
+Hard delete (type entity name to confirm) cascade-deletes Campaigns and Accounts (and children) via DB FKs.
 
-Entity tabs: Profile · Campaigns · Comments · History · Files · Statistics.
+Statistics (CRM-only): created/updated by/dates, last comment — no communication stats.
+
+Entity view sections (toward tabs): Profile · Campaigns · Entity Statuses · Entity Action Codes · Templates · Comments · History · Files · Statistics.
+
+### Entity Status / Entity Action Code
+
+Per-entity lookup catalogs (`entity_statuses`, `entity_action_codes`): name, optional code, sort order, active flag. Unique name per entity. CRUD on Entity View.
+
+Entity Action Codes also require a **classification**: `positive` | `negative` | `neutral`. Used when logging Account activities.
+
+### Entity Template
+
+Per-entity message templates (`entity_templates`): channel types (`sms` / `email` / `chat`, multi-select), unique slug per entity, body text, active flag. CRUD on Entity View. Body may include `{variable}` placeholders (e.g. `{account_name}`); Collectimate can resolve available Account fields when the template is used. Catalog storage only — not a messaging product.
+
+When logging an Account activity with type SMS Send, Email Send, or Chat Send, an optional `entity_template_id` may reference an active template for that entity whose `types` include the matching channel (`sms` / `email` / `chat`). Shown on activity cards; not a send product.
 
 ### Account (Account Master)
 
 Hierarchy: `Entity → Campaign → Account`.  
 Belongs to exactly one Campaign (`campaign_id`). Entity is reached via `account.campaign.entity` (no direct `entity_id` on accounts).
 
-Core: Account Number, Product, Balance, Due Date, External Reference, Status, Notes.
+Core: Account Number, Account Name, Product, Balance, Due Date, External Reference, Status, Notes.
+
+Activity classification totals (denormalized, maintained on activity log/delete): `positive_activity_count`, `negative_activity_count`, `neutral_activity_count`. Each activity stores a classification snapshot at log time (from the chosen Entity Action Code, or `neutral` when none). Shown on Account status Total and Accounts Index (`+Pos` / `-Neg` / `~Neutral`).
+
+SMS/call channel totals (denormalized, same sync path): `sms_out_count` (`sms_send`), `sms_in_count` (`sms_receive`), `call_success_count` (manual + robo success), `call_failed_count` (manual + robo failed), `call_total_count` (success + failed). Shown on Accounts Index after `~Neutral`.
 
 First-class CRM listing + Campaign → Accounts (Entity shows Campaigns, not a flat Accounts tab as the parent path).
 
@@ -101,13 +120,13 @@ Lifecycle: soft delete; privileged **purge** (`accounts.purge`, audited) for acc
 
 Account tabs: Profile · Contact Info · Addresses · Secondary Contacts · Social Links.
 
-### Comment / Status History / File
+### Comment / File
 
-Entity-level. Comments = chronological notes. Status History = from/to + actor + time. Files via Laravel Storage (filename, path, mime, size, uploader).
+Entity-level. Comments = chronological notes. Files via Laravel Storage (filename, path, mime, size, uploader).
 
-## Status Management
+## Entity Status
 
-Master statuses (e.g. New, Active, Pending, Promise To Pay, Closed, Skip Trace) + categories + colors. Used by Entity/Account badges and history.
+Per-entity workflow status catalog (`entity_statuses`) with colors. Account current status is `entity_status_id`. There is no global `/statuses` master.
 
 ## Reporting & imports
 
@@ -139,9 +158,9 @@ Index FKs, status filters, unique codes (`campaign_code`, `entity_code`, usernam
 
 | Table | Key columns |
 |-------|-------------|
-| `entities` | `entity_code` (unique), `name`, `birthdate`, `custom_fields`, `status_id`, actors, soft delete |
-| `campaigns` | `entity_id`, `campaign_code` (unique), `name`, `description`, `status`, actors, soft delete |
-| `accounts` | `campaign_id`, `account_number`, `product`, `balance`, `due_date`, `external_reference`, `status_id`, `notes`, actors, soft delete |
+| `entities` | `entity_code` (unique), `name`, `custom_fields`, actors, soft delete |
+| `campaigns` | `entity_id`, `campaign_code` (unique), `name`, `description`, `status` (enum), actors, soft delete |
+| `accounts` | `campaign_id`, `account_number`, `account_name`, `product`, `balance`, `due_date`, `date_acquired`, `external_reference`, `entity_status_id`, `notes`, actors, soft delete |
 
 **Removed / never use:** `campaigns.client`, `entities.customer_name`, `accounts.client_reference`, `entities.campaign_id`, `accounts.entity_id`.
 

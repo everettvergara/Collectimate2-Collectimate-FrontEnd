@@ -1,26 +1,90 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import InputError from '@/Components/InputError.vue';
+import { Button } from '@/Components/ui/button';
+import { Input } from '@/Components/ui/input';
+import { Select } from '@/Components/ui/select';
+import { Textarea } from '@/Components/ui/textarea';
 import { Head, Link, useForm } from '@inertiajs/vue3';
-import Button from 'primevue/button';
-import Select from 'primevue/select';
-import InputText from 'primevue/inputtext';
-import Textarea from 'primevue/textarea';
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 
-const props = defineProps({ account: Object, campaigns: Array, statuses: Array });
+const props = defineProps({
+    account: Object,
+    campaigns: Array,
+    assignableAgentsByCampaign: Object,
+});
+
+function todayLocalDate() {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+
+    return `${y}-${m}-${day}`;
+}
+
+function campaignEntityId(campaign) {
+    return campaign?.entity_id ?? campaign?.entity?.id ?? null;
+}
+
+const initialCampaign =
+    props.campaigns?.find((c) => String(c.id) === String(props.account?.campaign_id))
+    ?? props.account?.campaign
+    ?? null;
+
+const entityId = ref(campaignEntityId(initialCampaign));
+
 const form = useForm({
     campaign_id: props.account?.campaign_id ?? null,
     account_number: props.account?.account_number ?? '',
-    product: props.account?.product ?? '',
-    balance: props.account?.balance ?? '',
-    due_date: props.account?.due_date ?? '',
-    external_reference: props.account?.external_reference ?? '',
-    status_id: props.account?.status_id ?? null,
+    account_name: props.account?.account_name ?? '',
+    date_acquired: props.account?.date_acquired
+        ? String(props.account.date_acquired).slice(0, 10)
+        : todayLocalDate(),
+    assigned_agent_profile_id: props.account?.assigned_agent_profile_id ?? null,
     notes: props.account?.notes ?? '',
 });
 
-const selectedCampaign = computed(() => props.campaigns?.find((c) => c.id === form.campaign_id) ?? props.account?.campaign ?? null);
+const entityOptions = computed(() => {
+    const map = new Map();
+
+    for (const campaign of props.campaigns ?? []) {
+        const entity = campaign.entity;
+        if (entity?.id == null || map.has(String(entity.id))) continue;
+        map.set(String(entity.id), entity);
+    }
+
+    return Array.from(map.values()).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+});
+
+const campaignOptions = computed(() => {
+    if (!entityId.value) return [];
+
+    return (props.campaigns ?? []).filter(
+        (campaign) => String(campaignEntityId(campaign)) === String(entityId.value),
+    );
+});
+
+const agentOptions = computed(() => {
+    if (!form.campaign_id) return [];
+    return props.assignableAgentsByCampaign?.[form.campaign_id]
+        ?? props.assignableAgentsByCampaign?.[String(form.campaign_id)]
+        ?? [];
+});
+
+watch(entityId, () => {
+    form.campaign_id = null;
+});
+
+watch(
+    () => form.campaign_id,
+    () => {
+        const ids = new Set(agentOptions.value.map((a) => String(a.id)));
+        if (form.assigned_agent_profile_id && !ids.has(String(form.assigned_agent_profile_id))) {
+            form.assigned_agent_profile_id = null;
+        }
+    },
+);
 
 const submit = () => {
     if (props.account) form.put(route('accounts.update', props.account.id));
@@ -33,19 +97,73 @@ const submit = () => {
     <AppLayout>
         <template #header>{{ account ? 'Edit Account' : 'Create Account' }}</template>
         <form class="max-w-xl space-y-4" @submit.prevent="submit">
-            <div><label class="form-label block mb-1">Campaign</label><Select v-model="form.campaign_id" :options="campaigns" option-label="name" option-value="id" class="w-full" /><InputError :message="form.errors.campaign_id" /></div>
             <div>
                 <label class="form-label block mb-1">Entity</label>
-                <div class="py-2">{{ selectedCampaign?.entity?.name ?? '—' }}</div>
+                <Select
+                    v-model="entityId"
+                    :options="entityOptions"
+                    option-label="name"
+                    option-value="id"
+                    class="w-full"
+                    placeholder="Select entity"
+                />
             </div>
-            <div><label class="form-label block mb-1">Account number</label><InputText v-model="form.account_number" class="w-full" /><InputError :message="form.errors.account_number" /></div>
-            <div><label class="form-label block mb-1">Product</label><InputText v-model="form.product" class="w-full" /></div>
-            <div><label class="form-label block mb-1">Balance</label><InputText v-model="form.balance" type="number" step="0.01" class="w-full" /></div>
-            <div><label class="form-label block mb-1">Due date</label><InputText v-model="form.due_date" type="date" class="w-full" /></div>
-            <div><label class="form-label block mb-1">External reference</label><InputText v-model="form.external_reference" class="w-full" /></div>
-            <div><label class="form-label block mb-1">Status</label><Select v-model="form.status_id" :options="statuses" option-label="name" option-value="id" class="w-full" show-clear /></div>
-            <div><label class="form-label block mb-1">Notes</label><Textarea v-model="form.notes" rows="3" class="w-full" /></div>
-            <div class="flex gap-2"><Button type="submit" label="Save" :loading="form.processing" /><Link :href="route('accounts.index')"><Button type="button" label="Cancel" severity="secondary" /></Link></div>
+            <div>
+                <label class="form-label block mb-1">Campaign</label>
+                <Select
+                    v-model="form.campaign_id"
+                    :options="campaignOptions"
+                    option-label="name"
+                    option-value="id"
+                    class="w-full"
+                    :disabled="!entityId"
+                    placeholder="Select campaign"
+                />
+                <InputError :message="form.errors.campaign_id" />
+            </div>
+            <div>
+                <label class="form-label block mb-1">Account number</label>
+                <Input v-model="form.account_number" class="w-full" />
+                <p v-if="!account" class="text-xs mt-1" style="color: var(--color-text-muted)">
+                    If left blank, will be autogenerated based on the hash of now().
+                </p>
+                <InputError :message="form.errors.account_number" />
+            </div>
+            <div>
+                <label class="form-label block mb-1">Account name</label>
+                <Input v-model="form.account_name" class="w-full" />
+                <InputError :message="form.errors.account_name" />
+            </div>
+            <div>
+                <label class="form-label block mb-1">Date acquired</label>
+                <Input v-model="form.date_acquired" type="date" class="w-full" />
+                <InputError :message="form.errors.date_acquired" />
+            </div>
+            <div>
+                <label class="form-label block mb-1">Assigned agent</label>
+                <Select
+                    v-model="form.assigned_agent_profile_id"
+                    :options="agentOptions"
+                    option-label="name"
+                    option-value="id"
+                    class="w-full"
+                    show-clear
+                    :disabled="!form.campaign_id"
+                    placeholder="Select agent"
+                />
+                <InputError :message="form.errors.assigned_agent_profile_id" />
+            </div>
+            <div>
+                <label class="form-label block mb-1">Notes</label>
+                <Textarea v-model="form.notes" class="w-full" rows="3" />
+                <InputError :message="form.errors.notes" />
+            </div>
+            <div class="flex gap-2">
+                <Button type="submit" :disabled="form.processing">Save</Button>
+                <Link :href="route('accounts.index')">
+                    <Button type="button" variant="secondary">Cancel</Button>
+                </Link>
+            </div>
         </form>
     </AppLayout>
 </template>

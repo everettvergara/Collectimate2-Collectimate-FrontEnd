@@ -23,7 +23,7 @@ Root [`AGENTS.md`](../AGENTS.md) is the short entry checklist for coding agents.
 |------|--------|
 | Product | Mini CRM foundation (not SMS / Calling / AI) |
 | App | Laravel 12 monolith |
-| UI | Vue 3 + Inertia + Vite + PrimeVue + Tailwind |
+| UI | Vue 3 + Inertia + Vite + shadcn-vue + TanStack Table + Tailwind |
 | DB | MariaDB 11+ |
 | Core graph | `Entity → Campaign → Account` (access: `User → Agent Profile → Campaign Assignment → Campaign`) |
 | Vocabulary | Entity / Campaign / Account only — never Client, Customer, or Contracts |

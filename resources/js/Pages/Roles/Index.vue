@@ -1,7 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
+import { Button } from '@/Components/ui/button';
 import { Head, Link } from '@inertiajs/vue3';
-import Button from 'primevue/button';
 
 defineProps({
     roles: Array,
@@ -27,7 +27,7 @@ defineProps({
                     <div class="form-label mt-1">{{ role.users_count }} users</div>
                 </div>
                 <Link :href="route('roles.edit', role.id)">
-                    <Button label="Edit permissions" size="small" />
+                    <Button size="sm">Edit permissions</Button>
                 </Link>
             </div>
         </div>

@@ -1,7 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
+import { Button } from '@/Components/ui/button';
 import { Head, Link } from '@inertiajs/vue3';
-import Button from 'primevue/button';
 
 defineProps({ profile: Object, can: Object });
 </script>
@@ -24,7 +24,9 @@ defineProps({ profile: Object, can: Object });
                 <div class="form-label mb-2">Campaigns</div>
                 <ul class="list-disc ps-5"><li v-for="c in profile.campaigns" :key="c.id">{{ c.name }}</li></ul>
             </div>
-            <Link v-if="can.update" :href="route('agent-profiles.edit', profile.id)"><Button label="Edit" size="small" /></Link>
+            <Link v-if="can.update" :href="route('agent-profiles.edit', profile.id)">
+                <Button size="sm">Edit</Button>
+            </Link>
         </div>
     </AppLayout>
 </template>

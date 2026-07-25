@@ -3,7 +3,7 @@
 Owns: design tokens, page patterns, shared components.  
 Stack packages → [07](07-technical-standards.md). Module list / nav contents → [04](04-modules.md). Export auth → [05](05-security.md).
 
-Implement UX through **Vue 3 + Inertia + PrimeVue** shared components — not vanilla JS or one-off HTML tables.
+Implement UX through **Vue 3 + Inertia + shadcn-vue + TanStack Table** shared components — not vanilla JS or one-off HTML tables.
 
 ## Design tokens
 
@@ -51,7 +51,7 @@ No bold UI (`600`/`700`/`bold`). Emphasize with color/size/spacing. Small fonts 
 | `--color-nav-hover` | `#2A3844` | Nav hover |
 | `--color-nav-group` | `#8A97A3` | Nav group titles |
 
-Avoid purple-glow, cream/terracotta, or newspaper aesthetics. Status badge colors from Status Management when set.
+Avoid purple-glow, cream/terracotta, or newspaper aesthetics. Status badge colors from Entity Status when set.
 
 ```css
 body {
@@ -73,7 +73,7 @@ body {
 
 ## Shell & navigation
 
-- Authenticated: left sidebar + optional top user menu, flash region, page header  
+- Authenticated: left sidebar + optional top user menu, page header; global toast popup (vue-sonner) from `AppLayout`, top-right — not an inline banner in the nav/content chrome  
 - Guest: login / forgot password only  
 - Nav groups and items: [04](04-modules.md) (Overview / CRM / Operations / Administration / Future)  
 - Group headings: uppercase, `--font-size-xs`, `--color-nav-group`, not bold  
@@ -102,7 +102,7 @@ Every listing (including nested Account/Entity child lists):
 
 - Query-string state for search/filters/sort  
 - Export honors current filters; formats Excel/CSV (+ PDF when warranted); audited ([05](05-security.md))  
-- One shared Collectimate listing wrapper around PrimeVue `DataTable`  
+- One shared Collectimate listing wrapper around TanStack Table (`CollectimateDataTable`)  
 
 ## Tables
 
@@ -120,29 +120,30 @@ Labels: **Entity** / **Campaign** / **Account** only — never Client, Customer,
 Forms: uppercase small labels · required indicators · field errors · Save · Save & Close · Cancel.  
 Submit via Inertia. Prefer full-page forms; modals for simple confirms. Confirm destructive actions.
 
-Row actions order: View → Edit → Delete (+ module actions after).
+Row actions order: View → Edit → Delete (+ module actions after).  
+Row actions are **icon-only** (`ListingRowActions`: Eye / Pencil / Trash) with `title` + `aria-label`.
 
 ## Other screens
 
 - **Assignment:** Assigned vs Available lists with search (paginate if long); same chrome  
-- **Dashboard:** simple counts + recent activity; CRM-only  
-- **Feedback:** shared Toast/Message; no bold alert titles — color + icon  
+- **Dashboard:** Activity today tables (Campaign × Status) + Account Portfolio Summary (Entity-only filter, drill-down in new tab) + Agents (Online/Offline + time ago); CRM-only  
+- **Feedback:** session flash (`flash.success` / `flash.error`) must surface as **popup toasts on all authenticated pages** via `AppLayout` + vue-sonner; never as inline text beside the sidebar. No bold alert titles — color + icon  
 
 ## Shared components (required)
 
-`AppLayout` · PageHeader · Flash · ListingToolbar · FilterPanel · CollectimateDataTable · Pagination · StatusTag · FormLabel · FormActions · TabView · ConfirmDialog  
+`AppLayout` · PageHeader · Toaster · ListingToolbar · FilterPanel · CollectimateDataTable · ListingRowActions · Pagination · StatusTag · FormLabel · FormActions · TabView · ConfirmDialog  
 
-Theme PrimeVue to the tokens above.
+Theme shadcn-vue (CSS variable aliases) to the Collectimate tokens above.
 
 ## Responsive & a11y
 
-Collapse sidebar on small screens. Labels tied to inputs. Icon-only controls need `aria-label`. Status needs text, not color alone.
+Collapse sidebar on small screens; on desktop, show/hide via the header control (persisted in `localStorage`). Labels tied to inputs. Icon-only controls need `aria-label`. Status needs text, not color alone.
 
 ## Don’ts
 
 - Vanilla JS / jQuery product UI  
 - React / Angular / Livewire-primary UI  
 - Detached SPA/API as main app  
-- Hand-rolled grids when DataTable fits  
+- Hand-rolled grids when CollectimateDataTable / TanStack Table fits  
 - Bold chrome · missing listing controls · tables without zebra/hover  
 - Knowledge Center / comms inbox / AI chat screens in Phase 1  

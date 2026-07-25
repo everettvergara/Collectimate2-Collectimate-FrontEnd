@@ -24,6 +24,8 @@ class PasswordController extends Controller
             'password' => Hash::make($validated['password']),
         ]);
 
-        return back();
+        return redirect()
+            ->route('profile.password.edit')
+            ->with('success', 'Password updated.');
     }
 }

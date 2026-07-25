@@ -2,9 +2,9 @@
 import AppLayout from '@/Layouts/AppLayout.vue';
 import CollectimateDataTable from '@/Components/CollectimateDataTable.vue';
 import ListingPage from '@/Components/ListingPage.vue';
+import ListingRowActions from '@/Components/ListingRowActions.vue';
 import { useListingNavigation } from '@/Composables/useListingNavigation';
-import { Head, Link } from '@inertiajs/vue3';
-import Column from 'primevue/column';
+import { Head } from '@inertiajs/vue3';
 
 const props = defineProps({
     users: Object,
@@ -13,6 +13,16 @@ const props = defineProps({
 });
 
 const { onPage, onSort, onSearch, onClear } = useListingNavigation(props.filters, 'users.index');
+
+const columns = [
+    { id: 'username', accessorKey: 'username', header: 'Username', sortable: true },
+    { id: 'email', accessorKey: 'email', header: 'Email', sortable: true },
+    { id: 'first_name', accessorKey: 'first_name', header: 'First name', sortable: true },
+    { id: 'last_name', accessorKey: 'last_name', header: 'Last name', sortable: true },
+    { id: 'status', accessorKey: 'status', header: 'Status', sortable: true },
+    { id: 'role', header: 'Role' },
+    { id: 'actions', header: 'Actions' },
+];
 
 function exportUrl() {
     const params = new URLSearchParams(props.filters ?? {});
@@ -37,6 +47,7 @@ function exportUrl() {
         >
             <CollectimateDataTable
                 :value="users.data"
+                :columns="columns"
                 :rows="users.per_page"
                 :total-records="users.total"
                 :first="(users.current_page - 1) * users.per_page"
@@ -45,19 +56,10 @@ function exportUrl() {
                 @page="onPage"
                 @sort="onSort"
             >
-                <Column field="username" header="Username" sortable />
-                <Column field="email" header="Email" sortable />
-                <Column field="first_name" header="First name" sortable />
-                <Column field="last_name" header="Last name" sortable />
-                <Column field="status" header="Status" sortable />
-                <Column header="Role">
-                    <template #body="{ data }">{{ data.role?.name }}</template>
-                </Column>
-                <Column header="Actions">
-                    <template #body="{ data }">
-                        <Link :href="route('users.edit', data.id)" class="hover:underline" style="color: var(--color-primary)">Edit</Link>
-                    </template>
-                </Column>
+                <template #cell.role="{ row }">{{ row.role?.name }}</template>
+                <template #cell.actions="{ row }">
+                    <ListingRowActions :edit-href="route('users.edit', row.id)" />
+                </template>
             </CollectimateDataTable>
         </ListingPage>
     </AppLayout>

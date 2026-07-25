@@ -20,7 +20,7 @@ Finish each slice’s baseline before expanding sideways. Hierarchy: **Entity �
 
 ### Slice 0 — Scaffold
 
-Laravel 12 + Breeze Vue/Inertia + PrimeVue + Tailwind + MariaDB + admin shell + design tokens + shared listing stubs + nav groups.  
+Laravel 12 + Breeze Vue/Inertia + shadcn-vue + TanStack Table + Tailwind + MariaDB + admin shell + design tokens + shared listing stubs + nav groups.  
 Exit: login + empty authenticated shell.
 
 ### Slice 1 — Auth
@@ -35,17 +35,19 @@ Seed roles; permission keys including `*.export` (+ `accounts.purge` later); Rol
 
 Users CRUD; Agent Profiles CRUD; `0..1` link; operators should have profiles.
 
-### Slice 4 — Status Management
+### Slice 4 — Entity Status (replaces global Status Management)
 
-CRUD, categories, colors, seed defaults.
+Per-entity Status + Action Code catalogs on Entity View (colors, classification). Global `/statuses` removed.
 
 ### Slice 5 — Entities
 
 Entity CRUD + standard listing (`entities.export`) + profile. Soft deletes + audit actors. No Client/Customer labels — fields use Entity Code / Name.
 
+**Revision (2026-07-23):** drop Entity birthdate/global status; per-entity Status + Action Code catalogs on Entity View; hard cascade delete with type-name confirm; Campaigns managed in table on Entity View; listing row actions are icons.
+
 ### Slice 6 — Campaigns & Assignment
 
-Campaign under Entity (`entity_id`); CRUD/archive; assignment model + unique pair; assign UI both sides; audit.
+Campaign under Entity (`entity_id`); CRUD/archive/delete; assignment model + unique pair; assign UI both sides; audit. Campaign Show lists Agents (not Accounts).
 
 ### Slice 7 — Scope engine
 
@@ -57,7 +59,7 @@ Accounts under Campaign: listing + Campaign Accounts; full profile; Contact Info
 
 ### Slice 9 — Entity supporting tabs
 
-Campaigns tab · Comments · Status History · Files · Statistics (CRM-only).
+Campaigns + Entity Statuses + Entity Action Codes already on Entity View; finish Comments · Status History · Files · Statistics (CRM-only) as tabs.
 
 ### Slice 10 — Import
 

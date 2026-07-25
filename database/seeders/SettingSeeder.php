@@ -16,9 +16,8 @@ class SettingSeeder extends Seeder
             ['group' => 'company', 'key' => 'company_email', 'value' => ''],
             ['group' => 'general', 'key' => 'timezone', 'value' => 'Asia/Manila'],
             ['group' => 'general', 'key' => 'date_format', 'value' => 'Y-m-d'],
-            ['group' => 'lookups', 'key' => 'contact_info_types', 'value' => 'email,phone,landline,fax,other'],
+            ['group' => 'lookups', 'key' => 'contact_info_types', 'value' => 'email,mobile,landline,fax,facebook,linkedin,x,instagram,website,other'],
             ['group' => 'lookups', 'key' => 'address_types', 'value' => 'home,work,billing,other'],
-            ['group' => 'lookups', 'key' => 'social_platforms', 'value' => 'linkedin,facebook,x,instagram,website,other'],
         ];
 
         foreach ($defaults as $row) {

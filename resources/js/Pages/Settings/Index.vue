@@ -1,8 +1,8 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
+import { Button } from '@/Components/ui/button';
+import { Input } from '@/Components/ui/input';
 import { Head, useForm } from '@inertiajs/vue3';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
 
 const props = defineProps({ settings: Array });
 const form = useForm({
@@ -20,10 +20,10 @@ const submit = () => form.put(route('settings.update'));
             <div v-if="!settings.length" style="color: var(--color-text-muted)">No settings configured yet.</div>
             <div v-for="(setting, index) in settings" :key="setting.id" class="p-3 border rounded" style="background: var(--color-bg-surface); border-color: var(--color-border)">
                 <label class="form-label block mb-1">{{ setting.key }}</label>
-                <InputText v-model="form.settings[index].value" class="w-full" />
+                <Input v-model="form.settings[index].value" class="w-full" />
                 <div class="form-label mt-1">{{ setting.group }}</div>
             </div>
-            <Button v-if="settings.length" type="submit" label="Save" :loading="form.processing" />
+            <Button v-if="settings.length" type="submit" :disabled="form.processing">Save</Button>
         </form>
     </AppLayout>
 </template>

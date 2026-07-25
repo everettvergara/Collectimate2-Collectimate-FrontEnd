@@ -15,7 +15,7 @@ Login · Forgot password · Change password · User profile. Laravel Auth. Audit
 
 ## Dashboard
 
-Widgets: Total Entities, Campaigns, Accounts, Users · Recent activity. Campaign-scoped where applicable. No communication stats.
+Widgets: Activity today (per Entity: Campaign × Status activity counts for today) · Account Portfolio Summary (Entity filter; status counts per accessible Campaign; drill-down to Account Master in new tab; excludes template entity) · Agents (Online = login audit today, else Offline; last activity as time ago). Campaign-scoped. No communication stats.
 
 ## Users
 
@@ -32,11 +32,11 @@ Operational staff CRUD; link to User; assignment of campaigns (shared with Campa
 
 ## Entities
 
-Top-level master (has many Campaigns). Detail tabs: Profile · Campaigns · Comments · History · Files · Statistics. Listing + `entities.export`.
+Top-level master (has many Campaigns). View sections: Profile · Campaigns table (add/view/edit/delete) · Entity Statuses · Entity Action Codes · Templates; later tabs Comments · History · Files · Statistics. Hard delete with type-name confirm cascades Campaigns/Accounts. Listing + `entities.export`.
 
 ## Campaigns
 
-Belongs to one Entity. Create / edit / archive. Assignment of agents from campaign screen. Accounts listed under the Campaign (and via Account Master nav).
+Belongs to one Entity. Create / edit / archive / delete. Assignment of agents from campaign screen (agents table on Campaign Show). Accounts via Account Master nav (not listed on Campaign Show).
 
 ## Campaign Assignment
 
@@ -49,9 +49,9 @@ Account under Campaign (`Entity → Campaign → Account`). CRM nav listing + Ca
 Detail tabs: Profile · Contact Info · Addresses · Secondary Contacts · Social Links.  
 Soft delete + `accounts.purge`. Batch import via Import module. Permissions: `accounts.view/create/update/delete/export/purge`.
 
-## Status Management
+## Entity Statuses, Action Codes & Templates
 
-Status CRUD, categories, colors. Seed defaults. Entity status changes write history.
+Per-entity catalogs live under Entity Show (Entity Statuses / Entity Action Codes / Templates). Account badges use Entity Status. Templates store SMS/email/chat body content with `{variable}` placeholders; they are not a messaging send product. CRM nav also includes read-only Activity Types and Contact Types, plus Address Types.
 
 ## Reports
 
@@ -80,9 +80,9 @@ General · Company · Lookups · System config. Permission-gated.
 | Group | Items |
 |-------|--------|
 | Overview | Dashboard |
-| CRM | Entities, Campaigns, Account Master, Status Management |
+| CRM | Entities (Campaigns / Entity Statuses / Entity Action Codes / Templates on Entity Show), Account Master |
 | Operations | Reports, Import |
-| Administration | Users, Roles & Permissions, Agent Profiles, Audit Logs, Settings |
+| Administration | Users, Roles & Permissions, Agent Profiles, Audit Logs, Settings, Demo Mode (template/demo data tool) |
 | Future | Disabled placeholders (Knowledge Center, SMS, Calling, Email, Messaging, AI, Analytics) |
 
 Campaign Assignment UX remains on Campaign and Agent Profile screens (optional admin shortcut allowed).
@@ -94,7 +94,6 @@ flowchart LR
   Auth --> Users
   Users --> Roles
   Users --> AgentProfiles
-  StatusManagement --> Entities
   Entities --> Campaigns
   AgentProfiles --> CampaignAssignment
   Campaigns --> CampaignAssignment

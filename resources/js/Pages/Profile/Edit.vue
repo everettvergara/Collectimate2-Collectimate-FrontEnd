@@ -1,9 +1,8 @@
 <script setup>
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import DeleteUserForm from './Partials/DeleteUserForm.vue';
-import UpdatePasswordForm from './Partials/UpdatePasswordForm.vue';
+import AppLayout from '@/Layouts/AppLayout.vue';
 import UpdateProfileInformationForm from './Partials/UpdateProfileInformationForm.vue';
-import { Head } from '@inertiajs/vue3';
+import { Button } from '@/Components/ui/button';
+import { Head, Link } from '@inertiajs/vue3';
 
 defineProps({
     mustVerifyEmail: {
@@ -17,40 +16,28 @@ defineProps({
 
 <template>
     <Head title="Profile" />
+    <AppLayout>
+        <template #header>Profile</template>
 
-    <AuthenticatedLayout>
-        <template #header>
-            <h2
-                class="text-xl font-semibold leading-tight text-gray-800"
-            >
-                Profile
-            </h2>
-        </template>
+        <div class="max-w-2xl space-y-4">
+            <section class="p-4 border rounded" style="border-color: var(--color-border); background: var(--color-bg-surface)">
+                <UpdateProfileInformationForm
+                    :must-verify-email="mustVerifyEmail"
+                    :status="status"
+                />
+            </section>
 
-        <div class="py-12">
-            <div class="mx-auto max-w-7xl space-y-6 sm:px-6 lg:px-8">
-                <div
-                    class="bg-white p-4 shadow sm:rounded-lg sm:p-8"
-                >
-                    <UpdateProfileInformationForm
-                        :must-verify-email="mustVerifyEmail"
-                        :status="status"
-                        class="max-w-xl"
-                    />
+            <section class="p-4 border rounded flex items-center justify-between gap-3" style="border-color: var(--color-border); background: var(--color-bg-surface)">
+                <div>
+                    <div class="form-label mb-1">Password</div>
+                    <p class="text-sm" style="color: var(--color-text-muted)">
+                        Change your account password on a separate page.
+                    </p>
                 </div>
-
-                <div
-                    class="bg-white p-4 shadow sm:rounded-lg sm:p-8"
-                >
-                    <UpdatePasswordForm class="max-w-xl" />
-                </div>
-
-                <div
-                    class="bg-white p-4 shadow sm:rounded-lg sm:p-8"
-                >
-                    <DeleteUserForm class="max-w-xl" />
-                </div>
-            </div>
+                <Link :href="route('profile.password.edit')">
+                    <Button type="button" variant="secondary" size="sm">Change password</Button>
+                </Link>
+            </section>
         </div>
-    </AuthenticatedLayout>
+    </AppLayout>
 </template>

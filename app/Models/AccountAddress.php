@@ -15,6 +15,8 @@ class AccountAddress extends Model
     protected $fillable = [
         'account_id',
         'type',
+        'name',
+        'relationship',
         'line1',
         'line2',
         'city',
@@ -22,6 +24,7 @@ class AccountAddress extends Model
         'postal_code',
         'country',
         'is_primary',
+        'remarks',
     ];
 
     protected function casts(): array

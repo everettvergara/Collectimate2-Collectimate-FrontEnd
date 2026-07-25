@@ -6,6 +6,7 @@ use App\Enums\UserStatus;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -21,6 +22,8 @@ use Illuminate\Support\Str;
     'last_name',
     'email',
     'mobile',
+    'avatar_path',
+    'about_me',
     'status',
     'role_id',
     'password',
@@ -31,6 +34,10 @@ class User extends Authenticatable
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
 
+    protected $appends = [
+        'avatar_url',
+    ];
+
     protected function casts(): array
     {
         return [
@@ -38,6 +45,19 @@ class User extends Authenticatable
             'password' => 'hashed',
             'status' => UserStatus::class,
         ];
+    }
+
+    protected function avatarUrl(): Attribute
+    {
+        return Attribute::get(function (): ?string {
+            if (! $this->avatar_path) {
+                return null;
+            }
+
+            // Root-relative so the image works regardless of APP_URL / port
+            // (e.g. php artisan serve on :8000 vs APP_URL=http://localhost).
+            return '/storage/'.ltrim($this->avatar_path, '/');
+        });
     }
 
     protected static function booted(): void

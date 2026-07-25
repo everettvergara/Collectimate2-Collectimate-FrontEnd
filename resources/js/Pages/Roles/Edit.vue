@@ -1,8 +1,8 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
+import { Button } from '@/Components/ui/button';
+import { Checkbox } from '@/Components/ui/checkbox';
 import { Head, Link, useForm } from '@inertiajs/vue3';
-import Button from 'primevue/button';
-import Checkbox from 'primevue/checkbox';
 
 const props = defineProps({
     role: Object,
@@ -44,7 +44,6 @@ const submit = () => form.put(route('roles.update', props.role.id));
                     <label v-for="perm in items" :key="perm.id" class="flex items-center gap-2">
                         <Checkbox
                             :model-value="form.permission_ids.includes(perm.id)"
-                            binary
                             @update:model-value="toggle(perm.id, $event)"
                         />
                         <span>{{ perm.name }}</span>
@@ -53,9 +52,9 @@ const submit = () => form.put(route('roles.update', props.role.id));
             </div>
 
             <div class="flex gap-2">
-                <Button type="submit" label="Save" :loading="form.processing" />
+                <Button type="submit" :disabled="form.processing">Save</Button>
                 <Link :href="route('roles.index')">
-                    <Button type="button" label="Cancel" severity="secondary" />
+                    <Button type="button" variant="secondary">Cancel</Button>
                 </Link>
             </div>
         </form>

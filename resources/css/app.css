@@ -34,6 +34,39 @@
     --color-nav-text-active: #ffffff;
     --color-nav-hover: #2a3844;
     --color-nav-group: #8a97a3;
+
+    /* shadcn-vue aliases → Collectimate tokens */
+    --background: var(--color-bg-surface);
+    --foreground: var(--color-text);
+    --card: var(--color-bg-surface);
+    --card-foreground: var(--color-text);
+    --popover: var(--color-bg-surface);
+    --popover-foreground: var(--color-text);
+    --primary: var(--color-primary);
+    --primary-foreground: #ffffff;
+    --secondary: var(--color-bg-subtle);
+    --secondary-foreground: var(--color-text);
+    --muted: var(--color-bg-subtle);
+    --muted-foreground: var(--color-text-muted);
+    --accent: var(--color-primary-subtle);
+    --accent-foreground: var(--color-text);
+    --destructive: var(--color-danger);
+    --destructive-foreground: #ffffff;
+    --border: var(--color-border);
+    --input: var(--color-border);
+    --ring: var(--color-primary);
+    --radius: 0.375rem;
+}
+
+@layer base {
+    * {
+        @apply border-border;
+    }
+
+    button:not(:disabled),
+    [role='button']:not(:disabled) {
+        cursor: pointer;
+    }
 }
 
 html,
@@ -46,7 +79,6 @@ body {
 }
 
 .form-label,
-.p-datatable .p-datatable-thead > tr > th,
 .table-collectimate thead th {
     font-size: var(--font-size-sm);
     font-weight: var(--font-weight-regular);
@@ -69,17 +101,18 @@ body {
     font-weight: var(--font-weight-regular);
 }
 
-.table-collectimate .p-datatable-tbody > tr:nth-child(odd),
+.table-collectimate thead th {
+    background-color: var(--color-bg-table-header);
+}
+
 .table-collectimate tbody tr:nth-child(odd) {
     background-color: var(--color-bg-table-odd);
 }
 
-.table-collectimate .p-datatable-tbody > tr:nth-child(even),
 .table-collectimate tbody tr:nth-child(even) {
     background-color: var(--color-bg-table-even);
 }
 
-.table-collectimate .p-datatable-tbody > tr:hover,
 .table-collectimate tbody tr:hover {
     background-color: var(--color-bg-table-hover) !important;
 }

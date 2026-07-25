@@ -11,13 +11,13 @@ export function useListingNavigation(filters = {}, routeName = null) {
     }
 
     function onPage(event) {
-        navigate({ page: event.page + 1 });
+        navigate({ page: event.pageIndex + 1 });
     }
 
     function onSort(event) {
         navigate({
-            sort: event.sortField,
-            direction: event.sortOrder === 1 ? 'asc' : 'desc',
+            sort: event.id,
+            direction: event.desc ? 'desc' : 'asc',
             page: 1,
         });
     }

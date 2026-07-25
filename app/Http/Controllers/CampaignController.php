@@ -50,10 +50,17 @@ class CampaignController extends Controller
 
     public function create(Request $request): Response
     {
+        $prefillEntityId = $request->integer('entity_id') ?: null;
+
+        if ($prefillEntityId) {
+            $this->authorizeEntityAccess($request, $prefillEntityId);
+        }
+
         return Inertia::render('Campaigns/Form', [
             'campaign' => null,
             'entities' => $this->availableEntities($request),
             'statuses' => array_column(CampaignStatus::cases(), 'value'),
+            'prefillEntityId' => $prefillEntityId,
         ]);
     }
 
@@ -69,18 +76,19 @@ class CampaignController extends Controller
 
         $auditLogger->log('campaign.created', $campaign, $campaign->id);
 
-        return redirect()->route('campaigns.index')->with('success', 'Campaign created.');
+        return redirect()->route('entities.show', $campaign->entity_id)->with('success', 'Campaign created.');
     }
 
     public function show(Request $request, Campaign $campaign): Response
     {
         $this->authorizeCampaign($request, $campaign);
 
-        $campaign->loadCount(['accounts', 'agentProfiles']);
+        $campaign->loadCount(['agentProfiles']);
         $campaign->load([
             'entity:id,name,entity_code',
-            'agentProfiles' => fn ($query) => $query->orderBy('display_name'),
-            'accounts' => fn ($query) => $query->orderBy('account_number')->limit(50),
+            'agentProfiles' => fn ($query) => $query
+                ->orderBy('display_name')
+                ->select(['agent_profiles.id', 'display_name', 'employee_number', 'position']),
         ]);
 
         $assignedIds = $campaign->agentProfiles->pluck('id');
@@ -95,6 +103,7 @@ class CampaignController extends Controller
             'can' => [
                 'update' => $request->user()->hasPermission('campaigns.update'),
                 'archive' => $request->user()->hasPermission('campaigns.archive'),
+                'delete' => $request->user()->hasPermission('campaigns.delete'),
                 'manageAssignments' => $request->user()->hasPermission('campaign_assignments.manage'),
             ],
         ]);
@@ -124,7 +133,7 @@ class CampaignController extends Controller
 
         $auditLogger->log('campaign.updated', $campaign, $campaign->id);
 
-        return redirect()->route('campaigns.index')->with('success', 'Campaign updated.');
+        return redirect()->route('entities.show', $campaign->entity_id)->with('success', 'Campaign updated.');
     }
 
     public function archive(Request $request, Campaign $campaign, AuditLogger $auditLogger): RedirectResponse
@@ -139,6 +148,25 @@ class CampaignController extends Controller
         $auditLogger->log('campaign.archived', $campaign, $campaign->id);
 
         return redirect()->route('campaigns.index')->with('success', 'Campaign archived.');
+    }
+
+    public function destroy(Request $request, Campaign $campaign, AuditLogger $auditLogger): RedirectResponse
+    {
+        $this->authorizeCampaign($request, $campaign);
+
+        $entityId = $campaign->entity_id;
+        $campaignId = $campaign->id;
+        $campaignName = $campaign->name;
+
+        $campaign->forceDelete();
+
+        $auditLogger->log('campaign.force_deleted', null, $campaignId, [
+            'campaign_id' => $campaignId,
+            'name' => $campaignName,
+            'entity_id' => $entityId,
+        ]);
+
+        return redirect()->route('entities.show', $entityId)->with('success', 'Campaign deleted.');
     }
 
     public function export(Request $request, AuditLogger $auditLogger): StreamedResponse

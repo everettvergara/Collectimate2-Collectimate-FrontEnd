@@ -12,7 +12,7 @@ UX tokens/patterns → [06](06-ui-standards.md). Security behavior → [05](05-s
 | UI app | Vue 3 (Composition API) |
 | Bridge | Inertia.js |
 | Bundler | Vite |
-| UI components | PrimeVue (+ PrimeIcons) |
+| UI components | shadcn-vue (+ Lucide) + TanStack Table |
 | Utility CSS | Tailwind CSS + Collectimate tokens ([06](06-ui-standards.md)) |
 | ORM | Eloquent |
 | AuthZ | Laravel Auth, Policies, Gates |
@@ -21,7 +21,7 @@ UX tokens/patterns → [06](06-ui-standards.md). Security behavior → [05](05-s
 | PDF | barryvdh/laravel-dompdf |
 | VCS | Git / GitHub |
 
-Scaffold: Laravel Breeze (Vue + Inertia) → add PrimeVue → apply Collectimate theme/components.  
+Scaffold: Laravel Breeze (Vue + Inertia) → add shadcn-vue + TanStack Table → apply Collectimate theme/components.  
 Root Blade = Inertia shell only. This repo is the full monolith (not React/Next, not a detached SPA).
 
 ## Forbidden (Phase 1)
@@ -29,7 +29,7 @@ Root Blade = Inertia shell only. This repo is the full monolith (not React/Next,
 - React / Next.js, Angular  
 - Livewire as primary UI  
 - Vanilla JS / jQuery as primary UI  
-- Homegrown tables/forms when PrimeVue covers the need  
+- Homegrown tables/forms when CollectimateDataTable / shadcn-vue covers the need  
 - Detached SPA + custom JSON API as the main app shape  
 - MongoDB, PostgreSQL, SQL Server, Redis, Elasticsearch  
 - Docker, Kubernetes, RabbitMQ, Kafka, microservices  
@@ -41,19 +41,19 @@ Root Blade = Inertia shell only. This repo is the full monolith (not React/Next,
 | Controllers | REST-ish resources returning `Inertia::render` |
 | Validation | Form Requests |
 | Authorization | Policies + Gates |
-| UI | Vue pages + PrimeVue via shared Collectimate wrappers |
+| UI | Vue pages + shadcn-vue + TanStack Table via shared Collectimate wrappers |
 | Services | When multi-model workflows need them |
 | Repositories | Only when justified |
 
 **PHP:** thin controllers; domain naming (`Entity`, `Campaign`, `Account`, `AgentProfile`); no Client/Customer synonyms; no unnecessary abstraction.  
 **Vue:** `resources/js/Pages`, `resources/js/Components`; Inertia forms/router; no second UI framework; no vanilla core UX.  
 **Data graph:** `Entity → Campaign → Account` ([03](03-domain-model.md)).  
-**Theme:** implement [06](06-ui-standards.md) tokens; every list uses shared listing + DataTable (search/filters/sort/pager/export).
+**Theme:** implement [06](06-ui-standards.md) tokens; every list uses shared listing + CollectimateDataTable (search/filters/sort/pager/export).
 
 ## Database
 
 Migrations + FKs + soft deletes + `created_by`/`updated_by` + timestamps + indexes.  
-Unique `(campaign_id, agent_profile_id)`. Seed roles, statuses, lookups. Reversible `down()` when safe.
+Unique `(campaign_id, agent_profile_id)`. Seed roles, activity/address types, lookups. Reversible `down()` when safe.
 
 ## Import / export
 
@@ -75,7 +75,7 @@ Auth · permission deny/allow · campaign scope + IDOR · Super Admin bypass · 
 
 ## Packages allowed without extra approval
 
-Laravel · inertia-laravel · Vue 3 · Vite Vue plugin · PrimeVue/PrimeIcons · Tailwind (+ Breeze peers) · Maatwebsite Excel · dompdf · optional Heroicons  
+Laravel · inertia-laravel · Vue 3 · Vite Vue plugin · shadcn-vue (reka-ui peers) · @tanstack/vue-table · Lucide · Tailwind (+ Breeze peers) · Maatwebsite Excel · dompdf · optional Heroicons  
 
 Other deps need explicit approval and must not violate the forbidden list.
 

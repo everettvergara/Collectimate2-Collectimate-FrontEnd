@@ -23,17 +23,20 @@ class RolePermissionSeeder extends Seeder
             'permissions' => [
                 'users.view', 'users.create', 'users.update', 'users.delete', 'users.export',
                 'agent_profiles.view', 'agent_profiles.create', 'agent_profiles.update', 'agent_profiles.delete', 'agent_profiles.export',
-                'campaigns.view', 'campaigns.create', 'campaigns.update', 'campaigns.archive', 'campaigns.export',
+                'campaigns.view', 'campaigns.create', 'campaigns.update', 'campaigns.archive', 'campaigns.delete', 'campaigns.export',
                 'campaign_assignments.manage',
                 'entities.view', 'entities.create', 'entities.update', 'entities.delete', 'entities.export',
                 'accounts.view', 'accounts.create', 'accounts.update', 'accounts.delete', 'accounts.export', 'accounts.purge',
                 'comments.view', 'comments.create', 'comments.update', 'comments.delete', 'comments.export',
                 'files.view', 'files.create', 'files.delete', 'files.export',
-                'statuses.view', 'statuses.manage', 'statuses.export',
+                'activity_types.view', 'activity_types.export',
+                'contact_types.view', 'contact_types.export',
+                'address_types.view', 'address_types.manage', 'address_types.export',
                 'reports.view', 'reports.export',
                 'imports.run',
                 'audit_logs.view', 'audit_logs.export',
                 'settings.manage',
+                'demo_mode.manage',
             ],
         ],
         'supervisor' => [
@@ -41,13 +44,15 @@ class RolePermissionSeeder extends Seeder
             'description' => 'Oversees campaign work and assignments.',
             'permissions' => [
                 'agent_profiles.view', 'agent_profiles.export',
-                'campaigns.view', 'campaigns.export',
+                'campaigns.view', 'campaigns.export', 'campaigns.delete',
                 'campaign_assignments.manage',
                 'entities.view', 'entities.create', 'entities.update', 'entities.delete', 'entities.export',
                 'accounts.view', 'accounts.create', 'accounts.update', 'accounts.delete', 'accounts.export',
                 'comments.view', 'comments.create', 'comments.update', 'comments.delete', 'comments.export',
                 'files.view', 'files.create', 'files.delete', 'files.export',
-                'statuses.view', 'statuses.export',
+                'activity_types.view', 'activity_types.export',
+                'contact_types.view', 'contact_types.export',
+                'address_types.view', 'address_types.export',
                 'reports.view', 'reports.export',
                 'imports.run',
             ],
@@ -61,7 +66,9 @@ class RolePermissionSeeder extends Seeder
                 'accounts.view', 'accounts.create', 'accounts.update', 'accounts.export',
                 'comments.view', 'comments.create', 'comments.update',
                 'files.view', 'files.create',
-                'statuses.view',
+                'activity_types.view',
+                'contact_types.view',
+                'address_types.view',
                 'reports.view',
             ],
         ],
@@ -74,7 +81,9 @@ class RolePermissionSeeder extends Seeder
                 'accounts.view', 'accounts.export',
                 'comments.view', 'comments.export',
                 'files.view', 'files.export',
-                'statuses.view', 'statuses.export',
+                'activity_types.view', 'activity_types.export',
+                'contact_types.view', 'contact_types.export',
+                'address_types.view', 'address_types.export',
                 'reports.view', 'reports.export',
             ],
         ],
@@ -98,6 +107,7 @@ class RolePermissionSeeder extends Seeder
         'campaigns.create' => ['module' => 'campaigns', 'name' => 'Create Campaigns'],
         'campaigns.update' => ['module' => 'campaigns', 'name' => 'Update Campaigns'],
         'campaigns.archive' => ['module' => 'campaigns', 'name' => 'Archive Campaigns'],
+        'campaigns.delete' => ['module' => 'campaigns', 'name' => 'Delete Campaigns'],
         'campaigns.export' => ['module' => 'campaigns', 'name' => 'Export Campaigns'],
         'campaign_assignments.manage' => ['module' => 'campaign_assignments', 'name' => 'Manage Campaign Assignments'],
         'entities.view' => ['module' => 'entities', 'name' => 'View Entities'],
@@ -120,15 +130,20 @@ class RolePermissionSeeder extends Seeder
         'files.create' => ['module' => 'files', 'name' => 'Create Files'],
         'files.delete' => ['module' => 'files', 'name' => 'Delete Files'],
         'files.export' => ['module' => 'files', 'name' => 'Export Files'],
-        'statuses.view' => ['module' => 'statuses', 'name' => 'View Statuses'],
-        'statuses.manage' => ['module' => 'statuses', 'name' => 'Manage Statuses'],
-        'statuses.export' => ['module' => 'statuses', 'name' => 'Export Statuses'],
+        'activity_types.view' => ['module' => 'activity_types', 'name' => 'View Activity Types'],
+        'activity_types.export' => ['module' => 'activity_types', 'name' => 'Export Activity Types'],
+        'contact_types.view' => ['module' => 'contact_types', 'name' => 'View Contact Types'],
+        'contact_types.export' => ['module' => 'contact_types', 'name' => 'Export Contact Types'],
+        'address_types.view' => ['module' => 'address_types', 'name' => 'View Address Types'],
+        'address_types.manage' => ['module' => 'address_types', 'name' => 'Manage Address Types'],
+        'address_types.export' => ['module' => 'address_types', 'name' => 'Export Address Types'],
         'reports.view' => ['module' => 'reports', 'name' => 'View Reports'],
         'reports.export' => ['module' => 'reports', 'name' => 'Export Reports'],
         'imports.run' => ['module' => 'imports', 'name' => 'Run Imports'],
         'audit_logs.view' => ['module' => 'audit_logs', 'name' => 'View Audit Logs'],
         'audit_logs.export' => ['module' => 'audit_logs', 'name' => 'Export Audit Logs'],
         'settings.manage' => ['module' => 'settings', 'name' => 'Manage Settings'],
+        'demo_mode.manage' => ['module' => 'demo_mode', 'name' => 'Manage Demo Mode'],
     ];
 
     public function run(): void
@@ -147,7 +162,19 @@ class RolePermissionSeeder extends Seeder
             $permissionIds[$slug] = $permission->id;
         }
 
-        $allPermissionIds = array_values($permissionIds);
+        // Drop removed permission slugs so stale rows are not left attached to roles.
+        Permission::query()
+            ->whereNotIn('slug', array_keys($this->permissions))
+            ->whereIn('slug', [
+                'statuses.view',
+                'statuses.manage',
+                'statuses.export',
+                'activity_types.manage',
+            ])
+            ->each(function (Permission $permission): void {
+                $permission->roles()->detach();
+                $permission->delete();
+            });
 
         foreach ($this->roles as $slug => $data) {
             $role = Role::query()->updateOrCreate(

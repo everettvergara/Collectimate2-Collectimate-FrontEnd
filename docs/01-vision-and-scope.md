@@ -25,7 +25,7 @@ When Phase 1 ships, the org can:
 
 **Access:** Login, forgot/change password, profile · Users · Roles/Permissions · Agent Profiles · Campaigns · Campaign Assignment · campaign-scoped queries · Audit Logs · Settings
 
-**CRM:** Dashboard (CRM counts only) · Entities · Account Master (profile; multi contact info/addresses/secondary contacts/social URLs; soft delete + purge; batch import) · Entity comments/history/files/statistics · Status Management · Reports · Import · Export/Download on every listing (per-module role permission)
+**CRM:** Dashboard (CRM counts only) · Entities · Account Master (profile; multi contact info/addresses/secondary contacts/social URLs; soft delete + purge; batch import) · Entity comments/history/files/statistics · Entity Statuses (per Entity) · Activity / Contact / Address Types · Reports · Import · Export/Download on every listing (per-module role permission)
 
 **Cross-cutting:** Soft deletes, timestamps, `created_by`/`updated_by` · one shared listing/detail/form UX · Policies/Gates · Laravel Storage
 

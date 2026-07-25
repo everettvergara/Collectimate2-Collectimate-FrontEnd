@@ -4,7 +4,7 @@ Short entry rules for agents. **Details live in `docs/01`–`docs/08` — do not
 
 ## What this is
 
-Laravel 12 CRM monolith (Vue 3 + Inertia + Vite + PrimeVue + Tailwind, MariaDB). Full app lives in this repo despite the “FrontEnd” name.
+Laravel 12 CRM monolith (Vue 3 + Inertia + Vite + shadcn-vue + TanStack Table + Tailwind, MariaDB). Full app lives in this repo despite the “FrontEnd” name.
 
 Not in Phase 1: Knowledge Center, SMS, Calling, Email/Messaging products, AI/RAG, analytics platforms.
 
@@ -24,7 +24,7 @@ Do not use any removed `summary-mvp1` brief; docs `01`–`08` are the source of 
 3. **Campaign Assignment** is the security boundary; scope every business query (Super Admin bypasses).
 4. Business hierarchy is **`Entity → Campaign → Account`** (Account Master under Campaign), with multi contact/address/secondary/social, soft delete, purge, batch import.
 5. Vocabulary is locked: **Entity / Campaign / Account only**. Never Client, Customer, or Contracts (for Account).
-6. One UI system via shared Vue/PrimeVue components — [06](docs/06-ui-standards.md).
+6. One UI system via shared Vue/shadcn-vue + TanStack Table components — [06](docs/06-ui-standards.md).
 7. Locked stack only — [07](docs/07-technical-standards.md). No React/Next, Livewire-primary UI, vanilla-JS admin, or detached SPA/API.
 8. Every listing: search, filters, sort, pagination, export (per-module `{module}.export` on roles).
 9. Stay in roadmap order; no communication/AI scope creep.
@@ -38,4 +38,4 @@ Data:    Entity → Campaign → Account → child rows
 
 ## Repo state
 
-Laravel app scaffolded (Vue/Inertia/PrimeVue). MariaDB via `.env`. Run `php artisan serve` + `npm run dev` (or `npm run build`). Super admin seeded: username `admin` / password `password`.
+Laravel app scaffolded (Vue/Inertia/shadcn-vue + TanStack Table). MariaDB via `.env`. Run `php artisan serve` + `npm run dev` (or `npm run build`). Super admin seeded: username `admin` / password `password`.

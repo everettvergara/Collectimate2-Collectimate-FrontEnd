@@ -1,7 +1,7 @@
 <script setup>
 import { ref, watch } from 'vue';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
+import { Button } from '@/Components/ui/button';
+import { Input } from '@/Components/ui/input';
 
 const props = defineProps({
     title: {
@@ -64,21 +64,13 @@ function onExport() {
         <div class="flex flex-wrap items-center justify-between gap-3">
             <h1 class="page-title">{{ title }}</h1>
             <div class="flex flex-wrap items-center gap-2">
-                <Button
-                    v-if="canExport"
-                    label="Export"
-                    severity="secondary"
-                    size="small"
-                    @click="onExport"
-                />
+                <Button v-if="canExport" variant="secondary" size="sm" @click="onExport">
+                    Export
+                </Button>
                 <slot name="actions" />
-                <Button
-                    v-if="canCreate && createHref"
-                    label="Create"
-                    size="small"
-                    as="a"
-                    :href="createHref"
-                />
+                <Button v-if="canCreate && createHref" as="a" size="sm" :href="createHref">
+                    Create
+                </Button>
             </div>
         </div>
 
@@ -88,7 +80,7 @@ function onExport() {
         >
             <div class="flex-1 min-w-[12rem]">
                 <label for="listing-search" class="form-label block mb-1">Search</label>
-                <InputText
+                <Input
                     id="listing-search"
                     v-model="localSearch"
                     class="w-full"
@@ -96,8 +88,8 @@ function onExport() {
                     @keyup.enter="applySearch"
                 />
             </div>
-            <Button label="Search" size="small" @click="applySearch" />
-            <Button label="Clear" severity="secondary" size="small" @click="clearFilters" />
+            <Button size="sm" @click="applySearch">Search</Button>
+            <Button variant="secondary" size="sm" @click="clearFilters">Clear</Button>
             <slot name="filters" />
         </div>
 

@@ -1,9 +1,10 @@
 <script setup>
 import InputError from '@/Components/InputError.vue';
-import InputLabel from '@/Components/InputLabel.vue';
-import PrimaryButton from '@/Components/PrimaryButton.vue';
-import TextInput from '@/Components/TextInput.vue';
+import { Button } from '@/Components/ui/button';
+import { Input } from '@/Components/ui/input';
+import { Textarea } from '@/Components/ui/textarea';
 import { Link, useForm, usePage } from '@inertiajs/vue3';
+import { ref } from 'vue';
 
 defineProps({
     mustVerifyEmail: {
@@ -14,99 +15,111 @@ defineProps({
     },
 });
 
-const user = usePage().props.auth.user;
+const page = usePage();
+const user = page.props.auth.user;
+const previewUrl = ref(user.avatar_url ?? null);
+const fileInputRef = ref(null);
 
 const form = useForm({
-    name: user.name,
-    email: user.email,
+    name: user.name ?? '',
+    email: user.email ?? '',
+    about_me: user.about_me ?? '',
+    avatar: null,
 });
+
+function onAvatarChange(event) {
+    const file = event.target.files?.[0] ?? null;
+    form.avatar = file;
+    if (file) {
+        previewUrl.value = URL.createObjectURL(file);
+    }
+}
+
+function submit() {
+    form.patch(route('profile.update'), {
+        forceFormData: true,
+        preserveScroll: true,
+        onSuccess: () => {
+            form.avatar = null;
+            if (fileInputRef.value) fileInputRef.value.value = '';
+            previewUrl.value = page.props.auth.user?.avatar_url ?? null;
+        },
+    });
+}
 </script>
 
 <template>
     <section>
-        <header>
-            <h2 class="text-lg font-medium text-gray-900">
-                Profile Information
-            </h2>
+        <div class="form-label mb-3">Profile information</div>
 
-            <p class="mt-1 text-sm text-gray-600">
-                Update your account's profile information and email address.
-            </p>
-        </header>
-
-        <form
-            @submit.prevent="form.patch(route('profile.update'))"
-            class="mt-6 space-y-6"
-        >
-            <div>
-                <InputLabel for="name" value="Name" />
-
-                <TextInput
-                    id="name"
-                    type="text"
-                    class="mt-1 block w-full"
-                    v-model="form.name"
-                    required
-                    autofocus
-                    autocomplete="name"
-                />
-
-                <InputError class="mt-2" :message="form.errors.name" />
+        <form class="space-y-4" @submit.prevent="submit">
+            <div class="flex items-center gap-4">
+                <div
+                    class="h-16 w-16 rounded-full overflow-hidden shrink-0 flex items-center justify-center text-sm font-medium"
+                    style="background: var(--color-primary); color: #fff"
+                >
+                    <img
+                        v-if="previewUrl"
+                        :src="previewUrl"
+                        alt="Avatar"
+                        class="h-full w-full object-cover"
+                    />
+                    <span v-else>{{ (form.name || '?').slice(0, 1).toUpperCase() }}</span>
+                </div>
+                <div class="min-w-0 flex-1">
+                    <label class="form-label block mb-1">Profile photo</label>
+                    <input
+                        ref="fileInputRef"
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        class="block w-full text-sm"
+                        @change="onAvatarChange"
+                    />
+                    <InputError class="mt-1" :message="form.errors.avatar" />
+                </div>
             </div>
 
             <div>
-                <InputLabel for="email" value="Email" />
+                <label class="form-label block mb-1" for="name">Name</label>
+                <Input id="name" v-model="form.name" class="w-full" required autocomplete="name" />
+                <InputError class="mt-1" :message="form.errors.name" />
+            </div>
 
-                <TextInput
-                    id="email"
-                    type="email"
-                    class="mt-1 block w-full"
-                    v-model="form.email"
-                    required
-                    autocomplete="username"
-                />
+            <div>
+                <label class="form-label block mb-1" for="email">Email</label>
+                <Input id="email" v-model="form.email" type="email" class="w-full" required autocomplete="username" />
+                <InputError class="mt-1" :message="form.errors.email" />
+            </div>
 
-                <InputError class="mt-2" :message="form.errors.email" />
+            <div>
+                <label class="form-label block mb-1" for="about_me">About me</label>
+                <Textarea id="about_me" v-model="form.about_me" class="w-full min-h-28" rows="4" />
+                <InputError class="mt-1" :message="form.errors.about_me" />
             </div>
 
             <div v-if="mustVerifyEmail && user.email_verified_at === null">
-                <p class="mt-2 text-sm text-gray-800">
+                <p class="text-sm" style="color: var(--color-text-muted)">
                     Your email address is unverified.
                     <Link
                         :href="route('verification.send')"
                         method="post"
                         as="button"
-                        class="rounded-md text-sm text-gray-600 underline hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                        class="underline"
+                        style="color: var(--color-primary)"
                     >
-                        Click here to re-send the verification email.
+                        Re-send verification email
                     </Link>
                 </p>
-
-                <div
+                <p
                     v-show="status === 'verification-link-sent'"
-                    class="mt-2 text-sm font-medium text-green-600"
+                    class="mt-2 text-sm"
+                    style="color: var(--color-success, #16a34a)"
                 >
-                    A new verification link has been sent to your email address.
-                </div>
+                    A new verification link has been sent.
+                </p>
             </div>
 
-            <div class="flex items-center gap-4">
-                <PrimaryButton :disabled="form.processing">Save</PrimaryButton>
-
-                <Transition
-                    enter-active-class="transition ease-in-out"
-                    enter-from-class="opacity-0"
-                    leave-active-class="transition ease-in-out"
-                    leave-to-class="opacity-0"
-                >
-                    <p
-                        v-if="form.recentlySuccessful"
-                        class="text-sm text-gray-600"
-                    >
-                        Saved.
-                    </p>
-                </Transition>
-            </div>
+            <Button type="submit" :disabled="form.processing">Save</Button>
         </form>
     </section>
 </template>

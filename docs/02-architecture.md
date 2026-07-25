@@ -5,7 +5,7 @@ Domain fields → [03](03-domain-model.md). Permissions/audit → [05](05-securi
 
 ## Application shape
 
-One **Laravel monolith** in this repo (not a detached frontend). UI via Inertia + Vue + PrimeVue. No microservices split in Phase 1.
+One **Laravel monolith** in this repo (not a detached frontend). UI via Inertia + Vue + shadcn-vue + TanStack Table. No microservices split in Phase 1.
 
 | Layer | Responsibility |
 |-------|----------------|
@@ -13,7 +13,7 @@ One **Laravel monolith** in this repo (not a detached frontend). UI via Inertia 
 | Policies / Gates | Authorization |
 | Services (when needed) | Multi-model workflows |
 | Eloquent | Persistence |
-| Inertia + Vue + PrimeVue | UI |
+| Inertia + Vue + shadcn-vue + TanStack Table | UI |
 | MariaDB | System of record |
 
 ## Auth vs operations
@@ -60,7 +60,7 @@ flowchart TD
   Account --> AccountSecondaryContact
   Account --> AccountSocialLink
   Entity --> Comment
-  Entity --> StatusHistory
+  Entity --> EntityStatus
   Entity --> FileAttachment
 ```
 

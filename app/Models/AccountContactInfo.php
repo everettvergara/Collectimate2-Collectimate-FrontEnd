@@ -16,6 +16,8 @@ class AccountContactInfo extends Model
     protected $fillable = [
         'account_id',
         'type',
+        'name',
+        'relationship',
         'value',
         'label',
         'is_primary',

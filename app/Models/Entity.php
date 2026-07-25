@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToEntityScope;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -17,24 +18,34 @@ class Entity extends Model
     protected $fillable = [
         'entity_code',
         'name',
-        'birthdate',
+        'logo_path',
         'custom_fields',
-        'status_id',
         'created_by',
         'updated_by',
+    ];
+
+    protected $appends = [
+        'logo_url',
     ];
 
     protected function casts(): array
     {
         return [
-            'birthdate' => 'date',
             'custom_fields' => 'array',
         ];
     }
 
-    public function status(): BelongsTo
+    protected function logoUrl(): Attribute
     {
-        return $this->belongsTo(Status::class);
+        return Attribute::get(function (): ?string {
+            if (! $this->logo_path) {
+                return null;
+            }
+
+            // Root-relative so the image works regardless of APP_URL / port
+            // (e.g. php artisan serve on :8000 vs APP_URL=http://localhost).
+            return '/storage/'.ltrim($this->logo_path, '/');
+        });
     }
 
     public function creator(): BelongsTo
@@ -57,14 +68,24 @@ class Entity extends Model
         return $this->hasManyThrough(Account::class, Campaign::class);
     }
 
+    public function entityStatuses(): HasMany
+    {
+        return $this->hasMany(EntityStatus::class);
+    }
+
+    public function entityActionCodes(): HasMany
+    {
+        return $this->hasMany(EntityActionCode::class);
+    }
+
+    public function entityTemplates(): HasMany
+    {
+        return $this->hasMany(EntityTemplate::class);
+    }
+
     public function comments(): HasMany
     {
         return $this->hasMany(Comment::class);
-    }
-
-    public function statusHistories(): HasMany
-    {
-        return $this->hasMany(StatusHistory::class);
     }
 
     public function files(): HasMany
