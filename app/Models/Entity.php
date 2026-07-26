@@ -83,6 +83,16 @@ class Entity extends Model
         return $this->hasMany(EntityTemplate::class);
     }
 
+    public function knowledgeGroups(): HasMany
+    {
+        return $this->hasMany(EntityKnowledgeGroup::class);
+    }
+
+    public function knowledgeItems(): HasMany
+    {
+        return $this->hasMany(EntityKnowledgeItem::class);
+    }
+
     public function comments(): HasMany
     {
         return $this->hasMany(Comment::class);
@@ -91,5 +101,28 @@ class Entity extends Model
     public function files(): HasMany
     {
         return $this->hasMany(EntityFile::class);
+    }
+
+    public function ensureDefaultKnowledgeGroup(?int $actorId = null): EntityKnowledgeGroup
+    {
+        $existing = $this->knowledgeGroups()
+            ->withoutGlobalScopes()
+            ->where('is_default', true)
+            ->first();
+
+        if ($existing) {
+            return $existing;
+        }
+
+        return $this->knowledgeGroups()->create([
+            'name' => 'Default',
+            'code' => 'default',
+            'description' => null,
+            'sort_order' => 0,
+            'is_active' => true,
+            'is_default' => true,
+            'created_by' => $actorId,
+            'updated_by' => $actorId,
+        ]);
     }
 }

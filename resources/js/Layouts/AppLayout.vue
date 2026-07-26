@@ -61,7 +61,10 @@ const userLabel = computed(() => {
 const groups = [
     {
         label: 'Overview',
-        items: [{ label: 'Dashboard', href: 'dashboard', match: 'dashboard' }],
+        items: [
+            { label: 'Dashboard', href: 'dashboard', match: 'dashboard' },
+            { label: 'SMS Dashboard', href: 'sms.dashboard', match: 'sms.dashboard' },
+        ],
     },
     {
         label: 'CRM',
@@ -78,6 +81,10 @@ const groups = [
         items: [
             { label: 'Reports', href: 'reports.index', match: 'reports.*' },
             { label: 'Import', href: 'imports.index', match: 'imports.*' },
+            { label: 'SMS Batches', href: 'sms.batches.index', match: 'sms.batches*' },
+            { label: 'SMS Received', href: 'sms.received.index', match: 'sms.received*' },
+            { label: 'SMS Callbacks', href: 'sms.callbacks.index', match: 'sms.callbacks*' },
+            { label: 'SMS Configuration', href: 'sms.config', match: 'sms.config*' },
         ],
     },
     {

@@ -26,6 +26,14 @@ const props = defineProps({
         type: String,
         default: '',
     },
+    smsDeviceGroups: {
+        type: Array,
+        default: () => [],
+    },
+    smsDevices: {
+        type: Array,
+        default: () => [],
+    },
 });
 
 const { navigate, onPage, onSort, onSearch, onClear } = useListingNavigation(props.filters, 'accounts.index');
@@ -63,7 +71,6 @@ watch(
         entityStatusId.value = filters?.entity_status_id ?? null;
         entityActionCodeId.value = filters?.entity_action_code_id ?? null;
         lastAgentId.value = filters?.last_activity_agent_profile_id ?? null;
-        selectedIds.value = [];
     },
     { deep: true },
 );
@@ -82,16 +89,8 @@ const targetCount = computed(() =>
 const canBulk = computed(() => !!props.can?.update && targetCount.value > 0);
 
 const bulkOpTitle = computed(() => {
-    switch (activeBulkOp.value) {
-        case 'campaign':
-            return 'Assign campaign';
-        case 'agent':
-            return 'Assign agent';
-        case 'status':
-            return 'Assign status';
-        default:
-            return 'Bulk operation';
-    }
+    if (activeBulkOp.value === 'assignment') return 'Assignment';
+    return 'Bulk operation';
 });
 
 const showBulkActivityModal = computed(() => activeBulkOp.value === 'activity');
@@ -100,12 +99,31 @@ const showSimpleBulkModal = computed(
 );
 
 const modalCampaignOptions = computed(() => bulkOptions.value?.campaigns ?? []);
-const modalAgentOptions = computed(() => bulkOptions.value?.agents ?? []);
 const modalStatusOptions = computed(() => bulkOptions.value?.statuses ?? []);
 const modalActionOptions = computed(() => bulkOptions.value?.actions ?? []);
 const modalEntityName = computed(() => bulkOptions.value?.entity?.name ?? '—');
 const modalTemplates = computed(() => bulkOptions.value?.templates ?? []);
 const modalActorLabel = computed(() => bulkOptions.value?.actor_label || props.actorLabel || '');
+
+const modalAgentOptions = computed(() => {
+    const map = bulkOptions.value?.agents_by_campaign ?? {};
+    const campaignKey = bulkForm.campaign_id;
+    if (campaignKey === null || campaignKey === undefined || campaignKey === '') return [];
+    return map[campaignKey] ?? map[String(campaignKey)] ?? [];
+});
+
+watch(
+    () => bulkForm.campaign_id,
+    () => {
+        if (activeBulkOp.value !== 'assignment') return;
+        const agentId = bulkForm.assigned_agent_profile_id;
+        if (!agentId) return;
+        const stillValid = modalAgentOptions.value.some((a) => a.id === agentId || String(a.id) === String(agentId));
+        if (!stillValid) {
+            bulkForm.assigned_agent_profile_id = null;
+        }
+    },
+);
 
 const bulkActivitySubtitle = computed(() => {
     const entity = modalEntityName.value !== '—' ? modalEntityName.value : 'one Entity';
@@ -127,7 +145,7 @@ const columns = [
     { id: 'campaign', header: 'Campaign' },
     { id: 'assigned_agent', header: 'Assigned agent' },
     { id: 'product', accessorKey: 'product', header: 'Product', sortable: true },
-    { id: 'activities', header: 'Activities' },
+    { id: 'activities', accessorKey: 'non_system_activities_count', header: 'Activities', sortable: true },
     { id: 'positive_activity_count', accessorKey: 'positive_activity_count', header: '+Pos', sortable: true },
     { id: 'negative_activity_count', accessorKey: 'negative_activity_count', header: '-Neg', sortable: true },
     { id: 'neutral_activity_count', accessorKey: 'neutral_activity_count', header: '~Neutral', sortable: true },
@@ -286,9 +304,7 @@ async function loadBulkOptions(op) {
         bulkOptions.value = data;
         if (data.error) {
             bulkOptionsError.value = data.error;
-        } else if (op === 'agent' && (data.agents?.length ?? 0) === 0) {
-            bulkOptionsError.value = 'No agent is assigned to every campaign in this set.';
-        } else if ((op === 'campaign' || op === 'status' || op === 'activity') && !data.entity) {
+        } else if ((op === 'assignment' || op === 'activity') && !data.entity) {
             bulkOptionsError.value = 'Selected accounts must belong to the same Entity.';
         }
     } catch (error) {
@@ -334,35 +350,19 @@ function submitBulk() {
     bulkForm.account_ids = bulkScope.value === 'selected' ? [...selectedIds.value] : [];
     bulkForm.filters = filterQueryParams();
 
-    const routeName = {
-        campaign: 'accounts.bulk.campaign',
-        agent: 'accounts.bulk.agent',
-        status: 'accounts.bulk.status',
-    }[activeBulkOp.value];
+    if (activeBulkOp.value !== 'assignment') return;
 
     bulkForm
-        .transform((data) => {
-            const payload = {
-                scope: data.scope,
-                account_ids: data.account_ids,
-                remarks: data.remarks,
-                filters: data.filters,
-            };
-
-            if (activeBulkOp.value === 'campaign') {
-                payload.campaign_id = data.campaign_id;
-            }
-            if (activeBulkOp.value === 'agent') {
-                payload.assigned_agent_profile_id = data.assigned_agent_profile_id;
-            }
-            if (activeBulkOp.value === 'status') {
-                payload.entity_status_id = data.entity_status_id;
-                payload.entity_action_code_id = data.entity_action_code_id;
-            }
-
-            return payload;
-        })
-        .post(route(routeName, {}, false), {
+        .transform((data) => ({
+            scope: data.scope,
+            account_ids: data.account_ids,
+            remarks: data.remarks,
+            filters: data.filters,
+            campaign_id: data.campaign_id,
+            entity_status_id: data.entity_status_id || null,
+            assigned_agent_profile_id: data.assigned_agent_profile_id || null,
+        }))
+        .post(route('accounts.bulk.assignment', {}, false), {
             preserveScroll: true,
             onSuccess: () => {
                 selectedIds.value = [];
@@ -481,16 +481,10 @@ function onBulkActivitySuccess() {
                             @update:model-value="setBulkScope"
                         />
                     </div>
-                    <Button size="sm" variant="secondary" :disabled="!canBulk" @click="openBulkModal('campaign')">
-                        Assign campaign
+                    <Button size="sm" variant="outline" :disabled="!canBulk" @click="openBulkModal('assignment')">
+                        Assignment
                     </Button>
-                    <Button size="sm" variant="secondary" :disabled="!canBulk" @click="openBulkModal('agent')">
-                        Assign agent
-                    </Button>
-                    <Button size="sm" variant="secondary" :disabled="!canBulk" @click="openBulkModal('status')">
-                        Assign status
-                    </Button>
-                    <Button size="sm" variant="secondary" :disabled="!canBulk" @click="openBulkModal('activity')">
+                    <Button size="sm" variant="outline" :disabled="!canBulk" @click="openBulkModal('activity')">
                         Add activity
                     </Button>
                 </div>
@@ -530,7 +524,7 @@ function onBulkActivitySuccess() {
                         <span class="truncate">{{ agentLabel(row.assigned_agent_profile) }}</span>
                     </div>
                 </template>
-                <template #cell.activities="{ row }">{{ row.activities_count ?? 0 }}</template>
+                <template #cell.activities="{ row }">{{ row.non_system_activities_count ?? 0 }}</template>
                 <template #cell.positive_activity_count="{ row }">{{ row.positive_activity_count ?? 0 }}</template>
                 <template #cell.negative_activity_count="{ row }">{{ row.negative_activity_count ?? 0 }}</template>
                 <template #cell.neutral_activity_count="{ row }">{{ row.neutral_activity_count ?? 0 }}</template>
@@ -581,13 +575,13 @@ function onBulkActivitySuccess() {
                     {{ bulkOptionsError }}
                 </div>
 
-                <template v-else>
-                    <div v-if="activeBulkOp === 'campaign' || activeBulkOp === 'status'">
+                <template v-else-if="activeBulkOp === 'assignment'">
+                    <div>
                         <label class="form-label block mb-1">Entity</label>
                         <div class="text-sm py-2">{{ modalEntityName }}</div>
                     </div>
 
-                    <div v-if="activeBulkOp === 'campaign'">
+                    <div>
                         <label class="form-label block mb-1">Campaign <span class="text-red-600">*</span></label>
                         <Select
                             v-model="bulkForm.campaign_id"
@@ -600,48 +594,39 @@ function onBulkActivitySuccess() {
                         <InputError :message="bulkForm.errors.campaign_id" />
                     </div>
 
-                    <div v-if="activeBulkOp === 'agent'">
-                        <label class="form-label block mb-1">Agent <span class="text-red-600">*</span></label>
+                    <div>
+                        <label class="form-label block mb-1">Status</label>
+                        <Select
+                            v-model="bulkForm.entity_status_id"
+                            :options="modalStatusOptions"
+                            option-label="name"
+                            option-value="id"
+                            placeholder="Keep current"
+                            show-clear
+                            class="w-full"
+                        />
+                        <p class="text-xs mt-1" style="color: var(--color-text-muted)">
+                            Leave blank to keep the current status (status will not be updated).
+                        </p>
+                        <InputError :message="bulkForm.errors.entity_status_id" />
+                    </div>
+
+                    <div>
+                        <label class="form-label block mb-1">Agent</label>
                         <Select
                             v-model="bulkForm.assigned_agent_profile_id"
                             :options="modalAgentOptions"
                             option-label="name"
                             option-value="id"
-                            placeholder="Select agent"
+                            placeholder="Keep current"
+                            show-clear
                             class="w-full"
+                            :disabled="!bulkForm.campaign_id"
                         />
-                        <InputError :message="bulkForm.errors.assigned_agent_profile_id || bulkForm.errors.bulk" />
-                        <p v-if="modalAgentOptions.length === 0" class="text-sm mt-1" style="color: var(--color-text-muted)">
-                            No agent is assigned to every campaign in this set.
+                        <p class="text-xs mt-1" style="color: var(--color-text-muted)">
+                            Leave blank to keep the current agent when still assigned to the target campaign; otherwise cleared.
                         </p>
-                    </div>
-
-                    <div v-if="activeBulkOp === 'status'" class="space-y-3">
-                        <div>
-                            <label class="form-label block mb-1">Status <span class="text-red-600">*</span></label>
-                            <Select
-                                v-model="bulkForm.entity_status_id"
-                                :options="modalStatusOptions"
-                                option-label="name"
-                                option-value="id"
-                                placeholder="Select status"
-                                class="w-full"
-                            />
-                            <InputError :message="bulkForm.errors.entity_status_id" />
-                        </div>
-                        <div>
-                            <label class="form-label block mb-1">Action</label>
-                            <Select
-                                v-model="bulkForm.entity_action_code_id"
-                                :options="modalActionOptions"
-                                option-label="name"
-                                option-value="id"
-                                placeholder="Optional"
-                                show-clear
-                                class="w-full"
-                            />
-                            <InputError :message="bulkForm.errors.entity_action_code_id" />
-                        </div>
+                        <InputError :message="bulkForm.errors.assigned_agent_profile_id || bulkForm.errors.bulk" />
                     </div>
 
                     <div>
@@ -674,6 +659,8 @@ function onBulkActivitySuccess() {
             :entity-action-codes="modalActionOptions"
             :entity-templates="modalTemplates"
             :actor-label="modalActorLabel"
+            :sms-device-groups="smsDeviceGroups"
+            :sms-devices="smsDevices"
             :submit-url="bulkActivitySubmitUrl"
             :extra-payload="bulkActivityExtraPayload"
             :subtitle="bulkActivitySubtitle"

@@ -37,6 +37,7 @@ class RolePermissionSeeder extends Seeder
                 'audit_logs.view', 'audit_logs.export',
                 'settings.manage',
                 'demo_mode.manage',
+                'sms.view', 'sms.manage', 'sms.export', 'sms.queue.cancel',
             ],
         ],
         'supervisor' => [
@@ -55,6 +56,7 @@ class RolePermissionSeeder extends Seeder
                 'address_types.view', 'address_types.export',
                 'reports.view', 'reports.export',
                 'imports.run',
+                'sms.view', 'sms.export', 'sms.queue.cancel',
             ],
         ],
         'agent' => [
@@ -70,6 +72,7 @@ class RolePermissionSeeder extends Seeder
                 'contact_types.view',
                 'address_types.view',
                 'reports.view',
+                'sms.view',
             ],
         ],
         'viewer' => [
@@ -144,6 +147,10 @@ class RolePermissionSeeder extends Seeder
         'audit_logs.export' => ['module' => 'audit_logs', 'name' => 'Export Audit Logs'],
         'settings.manage' => ['module' => 'settings', 'name' => 'Manage Settings'],
         'demo_mode.manage' => ['module' => 'demo_mode', 'name' => 'Manage Demo Mode'],
+        'sms.view' => ['module' => 'sms', 'name' => 'View SMS Dashboard & Callbacks'],
+        'sms.manage' => ['module' => 'sms', 'name' => 'Manage SMS Configuration'],
+        'sms.export' => ['module' => 'sms', 'name' => 'Export SMS Callbacks'],
+        'sms.queue.cancel' => ['module' => 'sms', 'name' => 'Cancel SMS Queue Batches'],
     ];
 
     public function run(): void

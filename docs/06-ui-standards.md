@@ -112,7 +112,8 @@ Every listing (including nested Account/Entity child lists):
 
 ## Detail & forms
 
-**Entity tabs:** Profile · Campaigns · Comments · History · Files · Statistics  
+**Entity tabs:** Profile · Campaigns · Statuses · Action Codes · Templates · Knowledge Groups (+ later Comments · History · Files · Statistics)  
+**Knowledge Group Show** (drill-down from Knowledge Groups View): Knowledge Center items for that group (text / URL / PDF)
 **Account tabs:** Profile · Contact Info · Addresses · Secondary Contacts · Social Links  
 
 Labels: **Entity** / **Campaign** / **Account** only — never Client, Customer, or Contracts.
@@ -146,4 +147,4 @@ Collapse sidebar on small screens; on desktop, show/hide via the header control 
 - Detached SPA/API as main app  
 - Hand-rolled grids when CollectimateDataTable / TanStack Table fits  
 - Bold chrome · missing listing controls · tables without zebra/hover  
-- Knowledge Center / comms inbox / AI chat screens in Phase 1  
+- Future-nav Knowledge Center product / comms inbox / AI chat screens in Phase 1 (Entity Knowledge Groups tab + Group Show item CRUD are allowed)  

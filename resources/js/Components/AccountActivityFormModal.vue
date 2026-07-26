@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
+import Checkbox from '@/Components/Checkbox.vue';
 import InputError from '@/Components/InputError.vue';
 import Modal from '@/Components/Modal.vue';
 import { Button } from '@/Components/ui/button';
@@ -27,6 +28,8 @@ const props = defineProps({
     extraPayload: { type: Object, default: () => ({}) },
     subtitle: { type: String, default: '' },
     remarksRequired: { type: Boolean, default: false },
+    smsDeviceGroups: { type: Array, default: () => [] },
+    smsDevices: { type: Array, default: () => [] },
 });
 
 const emit = defineEmits(['close', 'success']);
@@ -75,7 +78,18 @@ const form = useForm({
     reference_contact_info_id: null,
     reference_address_id: null,
     remarks: '',
+    queue_for_sms: false,
+    sms_recipient_scope: 'primary_mobile',
+    sms_target_mode: 'group_round_robin',
+    sms_device_group_id: null,
+    sms_device_id: null,
     attachments: [],
+});
+
+const formErrorSummary = computed(() => {
+    const errors = form.errors ?? {};
+    const first = Object.values(errors).flat().find(Boolean);
+    return first ? String(first) : '';
 });
 
 const SEND_TEMPLATE_CHANNELS = {
@@ -94,6 +108,44 @@ const activityTemplateChannel = computed(
 );
 
 const showActivityTemplateSelect = computed(() => !!activityTemplateChannel.value);
+
+const showQueueForSms = computed(() => selectedActivityTypeCode.value === 'sms_send');
+
+const smsRecipientScopeOptions = [
+    { id: 'primary_mobile', name: 'Primary mobile only' },
+    { id: 'all_mobiles', name: 'All mobiles (primary + others)' },
+];
+
+const smsTargetModeOptions = [
+    { id: 'group_round_robin', name: 'Round robin to group' },
+    { id: 'specific_device', name: 'Specific device' },
+];
+
+watch(showQueueForSms, (show) => {
+    if (!show) {
+        form.queue_for_sms = false;
+        return;
+    }
+    if (props.mode === 'single') {
+        form.queue_for_sms = true;
+    }
+});
+
+watch(
+    () => form.queue_for_sms,
+    (on) => {
+        if (!on) return;
+        if (!form.sms_target_mode) {
+            form.sms_target_mode = 'group_round_robin';
+        }
+        if (!form.sms_device_group_id && props.smsDeviceGroups?.length) {
+            form.sms_device_group_id = props.smsDeviceGroups[0].id;
+        }
+        if (!form.sms_device_id && props.smsDevices?.length) {
+            form.sms_device_id = props.smsDevices[0].id;
+        }
+    },
+);
 
 const activityTemplateOptions = computed(() => {
     const channel = activityTemplateChannel.value;
@@ -155,6 +207,8 @@ function prefill() {
     form.reference_contact_info_id = null;
     form.reference_address_id = null;
     form.remarks = '';
+    form.queue_for_sms = false;
+    form.sms_recipient_scope = 'primary_mobile';
     resetAttachments();
 
     if (props.mode === 'single' && props.account) {
@@ -165,10 +219,13 @@ function prefill() {
         form.reference_date = defaultDate();
         form.reference_time = defaultTime();
         form.reference_text = props.account?.last_reference_text ?? '';
+        const type = (props.activityTypes ?? []).find((t) => t.id === form.activity_type_id);
+        form.queue_for_sms = type?.code === 'sms_send';
         return;
     }
 
-    form.activity_type_id = null;
+    const othersType = (props.activityTypes ?? []).find((t) => t.code === 'others');
+    form.activity_type_id = othersType?.id ?? null;
     form.entity_status_id = null;
     form.entity_action_code_id = null;
     form.reference_amount = '';
@@ -206,10 +263,24 @@ function submit() {
             const payload = {
                 ...data,
                 ...props.extraPayload,
+                entity_status_id: data.entity_status_id || null,
+                entity_action_code_id: data.entity_action_code_id || null,
             };
             if (!showContactAddress.value) {
                 delete payload.reference_contact_info_id;
                 delete payload.reference_address_id;
+            }
+            if (props.mode !== 'bulk' || !showQueueForSms.value || !data.queue_for_sms) {
+                delete payload.sms_recipient_scope;
+            }
+            if (!showQueueForSms.value || !data.queue_for_sms) {
+                delete payload.sms_target_mode;
+                delete payload.sms_device_group_id;
+                delete payload.sms_device_id;
+            } else if (data.sms_target_mode === 'group_round_robin') {
+                delete payload.sms_device_id;
+            } else {
+                delete payload.sms_device_group_id;
             }
             return payload;
         })
@@ -233,6 +304,13 @@ function submit() {
                     {{ subtitle }}
                 </p>
             </div>
+            <div
+                v-if="formErrorSummary"
+                class="text-sm rounded border px-3 py-2"
+                style="border-color: var(--color-danger, #b91c1c); color: var(--color-danger, #b91c1c)"
+            >
+                {{ formErrorSummary }}
+            </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                     <label class="form-label block mb-1">Status</label>
@@ -242,7 +320,16 @@ function submit() {
                         option-label="name"
                         option-value="id"
                         class="w-full"
+                        show-clear
+                        :placeholder="mode === 'bulk' ? 'Keep current' : 'Select…'"
                     />
+                    <p
+                        v-if="mode === 'bulk'"
+                        class="text-xs mt-1"
+                        style="color: var(--color-text-muted)"
+                    >
+                        Leave blank to keep each account’s current status.
+                    </p>
                     <InputError :message="form.errors.entity_status_id" />
                 </div>
                 <div>
@@ -254,7 +341,16 @@ function submit() {
                         option-value="id"
                         class="w-full"
                         show-clear
+                        :placeholder="mode === 'bulk' ? 'Keep current' : 'Select…'"
                     />
+                    <p
+                        v-if="mode === 'bulk'"
+                        class="text-xs mt-1"
+                        style="color: var(--color-text-muted)"
+                    >
+                        Leave blank to keep each account’s current action.
+                    </p>
+                    <InputError :message="form.errors.entity_action_code_id" />
                 </div>
                 <div>
                     <label class="form-label block mb-1">Activity type</label>
@@ -338,6 +434,75 @@ function submit() {
                     <label class="form-label block mb-1">Ref text</label>
                     <Textarea v-model="form.reference_text" rows="5" class="w-full" />
                 </div>
+                <div v-if="showQueueForSms" class="sm:col-span-2 space-y-2">
+                    <label class="flex items-center gap-2 text-sm">
+                        <Checkbox v-model:checked="form.queue_for_sms" />
+                        <span>Queue in SMS</span>
+                    </label>
+                    <p class="text-xs" style="color: var(--color-text-muted)">
+                        <template v-if="mode === 'single'">
+                            When checked, this SMS Send is enqueued for the C++ SMS service.
+                            Select a mobile/landline reference contact.
+                        </template>
+                        <template v-else>
+                            When checked, each account is enqueued using mobile contacts only.
+                            Accounts without a valid mobile are skipped (activity is still created).
+                        </template>
+                    </p>
+                    <div v-if="mode === 'bulk' && form.queue_for_sms" class="space-y-1">
+                        <label class="form-label block mb-1">SMS recipients</label>
+                        <Select
+                            v-model="form.sms_recipient_scope"
+                            :options="smsRecipientScopeOptions"
+                            option-label="name"
+                            option-value="id"
+                            class="w-full"
+                        />
+                        <p class="text-xs" style="color: var(--color-text-muted)">
+                            Primary mobile only sends one SMS per account. All mobiles sends one SMS
+                            per distinct mobile number on the account.
+                        </p>
+                        <InputError :message="form.errors.sms_recipient_scope" />
+                    </div>
+                    <div v-if="form.queue_for_sms" class="space-y-2">
+                        <div>
+                            <label class="form-label block mb-1">Send via</label>
+                            <Select
+                                v-model="form.sms_target_mode"
+                                :options="smsTargetModeOptions"
+                                option-label="name"
+                                option-value="id"
+                                class="w-full"
+                            />
+                            <InputError :message="form.errors.sms_target_mode" />
+                        </div>
+                        <div v-if="form.sms_target_mode === 'group_round_robin'">
+                            <label class="form-label block mb-1">Device group</label>
+                            <Select
+                                v-model="form.sms_device_group_id"
+                                :options="smsDeviceGroups"
+                                option-label="name"
+                                option-value="id"
+                                class="w-full"
+                                placeholder="Select group…"
+                            />
+                            <InputError :message="form.errors.sms_device_group_id" />
+                        </div>
+                        <div v-else>
+                            <label class="form-label block mb-1">SMS device</label>
+                            <Select
+                                v-model="form.sms_device_id"
+                                :options="smsDevices"
+                                option-label="name"
+                                option-value="id"
+                                class="w-full"
+                                placeholder="Select device…"
+                            />
+                            <InputError :message="form.errors.sms_device_id" />
+                        </div>
+                    </div>
+                    <InputError :message="form.errors.queue_for_sms || form.errors.reference_contact_info_id" />
+                </div>
                 <div class="sm:col-span-2">
                     <label class="form-label block mb-1">
                         Remarks
@@ -367,7 +532,9 @@ function submit() {
             </div>
             <div class="flex justify-end gap-2">
                 <Button type="button" variant="secondary" size="sm" @click="close">Cancel</Button>
-                <Button type="submit" size="sm" :disabled="form.processing">Save</Button>
+                <Button type="submit" size="sm" :disabled="form.processing" @click.prevent="submit">
+                    Save
+                </Button>
             </div>
         </form>
     </Modal>

@@ -16,6 +16,7 @@ class DatabaseSeeder extends Seeder
             ActivityTypeSeeder::class,
             AddressTypeSeeder::class,
             SettingSeeder::class,
+            SmsSettingSeeder::class,
             SuperAdminSeeder::class,
             EntitySeeder::class,
         ]);

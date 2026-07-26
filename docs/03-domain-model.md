@@ -75,14 +75,14 @@ FKs: `campaign_id`, `agent_profile_id` (unique pair). Assignment UI from Campaig
 ### Entity
 
 Top-level master: Entity Code, Name, optional light identity fields, Custom Fields, audit actors/dates.  
-Has many Campaigns. Owns per-entity catalogs: **Entity Status**, **Entity Action Codes**, and **Templates** (managed on Entity View). Entity has no global Status field.  
+Has many Campaigns. Owns per-entity catalogs: **Entity Status**, **Entity Action Codes**, **Templates**, and **Knowledge Groups** (with Knowledge Center items managed on Knowledge Group Show). Entity has no global Status field.  
 Rich multi-contact/address/social data lives on **Account**, not as a flat Entity contacts module.
 
 Hard delete (type entity name to confirm) cascade-deletes Campaigns and Accounts (and children) via DB FKs.
 
 Statistics (CRM-only): created/updated by/dates, last comment — no communication stats.
 
-Entity view sections (toward tabs): Profile · Campaigns · Entity Statuses · Entity Action Codes · Templates · Comments · History · Files · Statistics.
+Entity view tabs: Profile · Campaigns · Entity Statuses · Entity Action Codes · Templates · Knowledge Groups · (+ later Comments · History · Files · Statistics). Knowledge Center items: drill-down via Knowledge Group View.
 
 ### Entity Status / Entity Action Code
 
@@ -96,6 +96,14 @@ Per-entity message templates (`entity_templates`): channel types (`sms` / `email
 
 When logging an Account activity with type SMS Send, Email Send, or Chat Send, an optional `entity_template_id` may reference an active template for that entity whose `types` include the matching channel (`sms` / `email` / `chat`). Shown on activity cards; not a send product.
 
+### Entity Knowledge Group / Knowledge Item
+
+Per-entity knowledge repository (catalog storage only — not AI/RAG/auto-reply).
+
+**Knowledge Group** (`entity_knowledge_groups`): name (unique per entity), optional code, description, sort order, active flag, `is_default`. Every Entity has exactly one **Default** group (seeded on create). Default cannot be deleted. Non-default groups delete only when they have zero items. At least one active group must remain.
+
+**Knowledge Item** (`entity_knowledge_items`): belongs to Entity + required Group; title; exclusive `type` (`text` | `url` | `pdf`); body / URL / PDF file fields accordingly; notes; sort order; active; soft delete. PDF via Laravel Storage. Managed on **Knowledge Group Show** (not an Entity Show tab). Future channels may reference these items; Phase 1 is CRUD repository only.
+
 ### Account (Account Master)
 
 Hierarchy: `Entity → Campaign → Account`.  
@@ -106,6 +114,12 @@ Core: Account Number, Account Name, Product, Balance, Due Date, External Referen
 Activity classification totals (denormalized, maintained on activity log/delete): `positive_activity_count`, `negative_activity_count`, `neutral_activity_count`. Each activity stores a classification snapshot at log time (from the chosen Entity Action Code, or `neutral` when none). Shown on Account status Total and Accounts Index (`+Pos` / `-Neg` / `~Neutral`).
 
 SMS/call channel totals (denormalized, same sync path): `sms_out_count` (`sms_send`), `sms_in_count` (`sms_receive`), `call_success_count` (manual + robo success), `call_failed_count` (manual + robo failed), `call_total_count` (success + failed). Shown on Accounts Index after `~Neutral`.
+
+### SMS Device Group / Device / Queue targeting
+
+- `sms_device_groups` — master (name, enabled, sort, `rr_last_device_id` for true round-robin). Seeded **Default** group owns existing devices.
+- `sms_devices` — belongs to exactly one group; Demo config may store `demo_send_success_rate` / `demo_receive_interval_seconds` (emitted only for Demo in `config.json`).
+- `sms_queue_items` targeting — `target_mode` (`group_round_robin` | `specific_device`), `target_sms_device_group_id`, `target_sms_device_id`; specific mode pre-pins `runtime_device_id`. Set when Account activity Queue in SMS is checked.
 
 First-class CRM listing + Campaign → Accounts (Entity shows Campaigns, not a flat Accounts tab as the parent path).
 
@@ -171,6 +185,6 @@ Index FKs, status filters, unique codes (`campaign_code`, `entity_code`, usernam
 - Assigning campaigns to Users  
 - Orphan Campaign without Entity, or Account without Campaign  
 - Naming the account module “Contracts”  
-- Building Knowledge Center in Phase 1  
+- Building the Future-nav Knowledge Center / AI-RAG product in Phase 1 (Entity Knowledge repository CRUD is allowed)  
 - Putting all multi-channel contact data only on Entity instead of Account  
 - Nesting Entity under Campaign

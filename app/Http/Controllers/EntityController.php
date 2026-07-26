@@ -57,6 +57,8 @@ class EntityController extends Controller
 
         $this->storeLogo($request, $entity);
 
+        $entity->ensureDefaultKnowledgeGroup($request->user()->id);
+
         $auditLogger->log('entity.created', $entity);
 
         return redirect()->route('entities.show', $entity)->with('success', 'Entity created.');
@@ -64,17 +66,34 @@ class EntityController extends Controller
 
     public function show(Request $request, Entity $entity): Response
     {
+        $entity->ensureDefaultKnowledgeGroup($request->user()->id);
+
         $entity->load([
             'campaigns' => fn ($query) => $query->withCount('accounts')->orderBy('name'),
             'entityStatuses' => fn ($query) => $query->orderBy('sort_order')->orderBy('name'),
             'entityActionCodes' => fn ($query) => $query->orderBy('sort_order')->orderBy('name'),
             'entityTemplates' => fn ($query) => $query->orderBy('slug'),
+            'knowledgeGroups' => fn ($query) => $query
+                ->withCount('items')
+                ->orderByDesc('is_default')
+                ->orderBy('sort_order')
+                ->orderBy('name'),
+            'creator:id,username,first_name,last_name',
+            'updater:id,username,first_name,last_name',
         ]);
 
         $canUpdate = $request->user()->hasPermission('entities.update');
 
         return Inertia::render('Entities/Show', [
             'entity' => $entity,
+            'summary' => [
+                'campaigns' => $entity->campaigns->count(),
+                'accounts' => (int) $entity->campaigns->sum('accounts_count'),
+                'statuses' => $entity->entityStatuses->count(),
+                'action_codes' => $entity->entityActionCodes->count(),
+                'templates' => $entity->entityTemplates->count(),
+                'knowledge' => $entity->knowledgeItems()->where('is_active', true)->count(),
+            ],
             'campaignStatuses' => array_column(CampaignStatus::cases(), 'value'),
             'actionCodeClassifications' => array_column(ActionCodeClassification::cases(), 'value'),
             'templateChannels' => array_column(TemplateChannel::cases(), 'value'),

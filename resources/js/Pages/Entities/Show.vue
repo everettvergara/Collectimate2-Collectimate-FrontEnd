@@ -1,33 +1,105 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import CollectimateDataTable from '@/Components/CollectimateDataTable.vue';
 import InputError from '@/Components/InputError.vue';
 import ListingRowActions from '@/Components/ListingRowActions.vue';
 import Modal from '@/Components/Modal.vue';
+import TabView from '@/Components/TabView.vue';
 import { Button } from '@/Components/ui/button';
 import { Checkbox } from '@/Components/ui/checkbox';
 import { Input } from '@/Components/ui/input';
 import { Select } from '@/Components/ui/select';
 import { Textarea } from '@/Components/ui/textarea';
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from '@/Components/ui/table';
-import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
+
+const VALID_TABS = [
+    'profile',
+    'campaigns',
+    'statuses',
+    'action-codes',
+    'templates',
+    'knowledge-groups',
+];
 
 const props = defineProps({
     entity: Object,
+    summary: Object,
     campaignStatuses: Array,
     actionCodeClassifications: Array,
     templateChannels: Array,
     copySources: Array,
     can: Object,
 });
+
+const page = usePage();
+
+const tabs = [
+    { id: 'profile', label: 'Profile' },
+    { id: 'campaigns', label: 'Campaigns' },
+    { id: 'statuses', label: 'Statuses' },
+    { id: 'action-codes', label: 'Action Codes' },
+    { id: 'templates', label: 'Templates' },
+    { id: 'knowledge-groups', label: 'Knowledge Groups' },
+];
+
+function tabFromUrl(url) {
+    try {
+        const tab = new URL(url, window.location.origin).searchParams.get('tab');
+        return VALID_TABS.includes(tab) ? tab : 'profile';
+    } catch {
+        return 'profile';
+    }
+}
+
+const activeTab = ref(tabFromUrl(page.url));
+
+watch(
+    () => page.url,
+    (url) => {
+        activeTab.value = tabFromUrl(url);
+    },
+);
+
+function setActiveTab(id) {
+    if (!VALID_TABS.includes(id) || id === activeTab.value) return;
+    activeTab.value = id;
+    router.get(
+        route('entities.show', props.entity.id),
+        { tab: id },
+        { preserveState: true, preserveScroll: true, replace: true },
+    );
+}
+
+const summaryTiles = computed(() => [
+    { label: 'Campaigns', value: props.summary?.campaigns ?? 0 },
+    { label: 'Accounts', value: props.summary?.accounts ?? 0 },
+    { label: 'Statuses', value: props.summary?.statuses ?? 0 },
+    { label: 'Action codes', value: props.summary?.action_codes ?? 0 },
+    { label: 'Templates', value: props.summary?.templates ?? 0 },
+    { label: 'Knowledge', value: props.summary?.knowledge ?? 0 },
+]);
+
+const entityInitials = computed(() => {
+    const name = String(props.entity?.name ?? '').trim();
+    if (!name) return '?';
+    const parts = name.split(/\s+/).filter(Boolean);
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+});
+
+function actorLabel(user) {
+    if (!user) return '—';
+    const name = [user.first_name, user.last_name].filter(Boolean).join(' ').trim();
+    return name || user.username || '—';
+}
+
+function formatDateTime(value) {
+    if (!value) return '—';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '—';
+    return date.toLocaleString();
+}
 
 const showDeleteModal = ref(false);
 const showCampaignModal = ref(false);
@@ -36,6 +108,7 @@ const showStatusCopyModal = ref(false);
 const showActionModal = ref(false);
 const showActionCopyModal = ref(false);
 const showTemplateModal = ref(false);
+const showKnowledgeGroupModal = ref(false);
 
 const deleteForm = useForm({ confirmation_name: '' });
 const nameMatches = computed(
@@ -48,6 +121,14 @@ const copySourceOptions = computed(() =>
         label: item.entity_code ? `${item.name} (${item.entity_code})` : item.name,
     })),
 );
+
+const campaignColumns = [
+    { id: 'campaign_code', accessorKey: 'campaign_code', header: 'Code' },
+    { id: 'name', accessorKey: 'name', header: 'Name' },
+    { id: 'status', accessorKey: 'status', header: 'Status' },
+    { id: 'accounts_count', accessorKey: 'accounts_count', header: 'Accounts' },
+    { id: 'actions', header: 'Actions' },
+];
 
 const statusColumns = [
     { id: 'name', accessorKey: 'name', header: 'Name' },
@@ -73,6 +154,16 @@ const templateColumns = [
     { id: 'slug', accessorKey: 'slug', header: 'Slug' },
     { id: 'body', header: 'Template' },
     { id: 'active', header: 'Active' },
+    { id: 'actions', header: 'Actions' },
+];
+
+const knowledgeGroupColumns = [
+    { id: 'name', accessorKey: 'name', header: 'Name' },
+    { id: 'code', accessorKey: 'code', header: 'Code' },
+    { id: 'sort_order', accessorKey: 'sort_order', header: 'Order' },
+    { id: 'active', header: 'Active' },
+    { id: 'default', header: 'Default' },
+    { id: 'items_count', accessorKey: 'items_count', header: 'Items' },
     { id: 'actions', header: 'Actions' },
 ];
 
@@ -109,9 +200,11 @@ function classificationChipStyle(value) {
     };
 }
 
+const campaignRows = computed(() => props.entity?.campaigns ?? []);
 const statusRows = computed(() => props.entity?.entity_statuses ?? []);
 const actionRows = computed(() => props.entity?.entity_action_codes ?? []);
 const templateRows = computed(() => props.entity?.entity_templates ?? []);
+const knowledgeGroupRows = computed(() => props.entity?.knowledge_groups ?? []);
 
 function channelLabel(value) {
     if (value === 'sms') return 'SMS';
@@ -445,28 +538,147 @@ function destroyTemplate(templateId) {
         router.delete(route('entities.templates.destroy', [props.entity.id, templateId]));
     }
 }
+
+const knowledgeGroupForm = useForm({
+    name: '',
+    code: '',
+    description: '',
+    sort_order: 0,
+    is_active: true,
+});
+const editingKnowledgeGroupId = ref(null);
+
+function resetKnowledgeGroupForm() {
+    editingKnowledgeGroupId.value = null;
+    knowledgeGroupForm.reset();
+    knowledgeGroupForm.clearErrors();
+    knowledgeGroupForm.sort_order = 0;
+    knowledgeGroupForm.is_active = true;
+}
+
+function openKnowledgeGroupModal() {
+    resetKnowledgeGroupForm();
+    showKnowledgeGroupModal.value = true;
+}
+
+function closeKnowledgeGroupModal() {
+    showKnowledgeGroupModal.value = false;
+    resetKnowledgeGroupForm();
+}
+
+function startEditKnowledgeGroup(group) {
+    editingKnowledgeGroupId.value = group.id;
+    knowledgeGroupForm.name = group.name ?? '';
+    knowledgeGroupForm.code = group.code ?? '';
+    knowledgeGroupForm.description = group.description ?? '';
+    knowledgeGroupForm.sort_order = group.sort_order ?? 0;
+    knowledgeGroupForm.is_active = !!group.is_active;
+    knowledgeGroupForm.clearErrors();
+    showKnowledgeGroupModal.value = true;
+}
+
+function submitKnowledgeGroup() {
+    if (editingKnowledgeGroupId.value) {
+        knowledgeGroupForm.put(
+            route('entities.knowledge-groups.update', [
+                props.entity.id,
+                editingKnowledgeGroupId.value,
+            ]),
+            {
+                preserveScroll: true,
+                onSuccess: () => closeKnowledgeGroupModal(),
+            },
+        );
+    } else {
+        knowledgeGroupForm.post(route('entities.knowledge-groups.store', props.entity.id), {
+            preserveScroll: true,
+            onSuccess: () => closeKnowledgeGroupModal(),
+        });
+    }
+}
+
+function destroyKnowledgeGroup(group) {
+    if (group.is_default) return;
+    if (confirm('Delete this knowledge group?')) {
+        router.delete(route('entities.knowledge-groups.destroy', [props.entity.id, group.id]));
+    }
+}
 </script>
 
 <template>
     <Head :title="entity.name" />
     <AppLayout>
         <template #header>{{ entity.name }}</template>
-        <div class="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start max-w-7xl">
-            <div class="space-y-6 min-w-0">
-                <div class="p-4 border rounded" style="background: var(--color-bg-surface); border-color: var(--color-border)">
-                    <div class="flex items-start gap-4">
+
+        <div class="space-y-4 max-w-7xl">
+            <div
+                class="p-4 border rounded"
+                style="background: var(--color-bg-surface); border-color: var(--color-border)"
+            >
+                <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div class="flex items-start gap-4 min-w-0">
                         <div
-                            v-if="entity.logo_url"
-                            class="h-16 w-16 rounded-md overflow-hidden shrink-0 border flex items-center justify-center"
-                            style="background: var(--color-bg); border-color: var(--color-border)"
+                            class="h-[4.5rem] w-[4.5rem] rounded-md overflow-hidden shrink-0 border flex items-center justify-center text-lg"
+                            style="
+                                background: var(--color-bg-subtle);
+                                border-color: var(--color-border);
+                                color: var(--color-primary);
+                            "
                         >
                             <img
+                                v-if="entity.logo_url"
                                 :src="entity.logo_url"
                                 :alt="`${entity.name} logo`"
                                 class="h-full w-full object-contain"
                             />
+                            <span v-else>{{ entityInitials }}</span>
                         </div>
-                        <div class="grid grid-cols-2 gap-3 flex-1 min-w-0">
+                        <div class="min-w-0 space-y-2">
+                            <div>
+                                <div class="page-title truncate">{{ entity.name }}</div>
+                                <div class="text-sm" style="color: var(--color-text-muted)">
+                                    {{ entity.entity_code }}
+                                </div>
+                            </div>
+                            <div class="flex flex-wrap gap-2">
+                                <Link v-if="can.update" :href="route('entities.edit', entity.id)">
+                                    <Button size="sm">Edit</Button>
+                                </Link>
+                                <Button
+                                    v-if="can.delete"
+                                    variant="destructive"
+                                    size="sm"
+                                    @click="openDeleteModal"
+                                >
+                                    Delete
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div
+                        class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 lg:min-w-[32rem] shrink-0"
+                    >
+                        <div
+                            v-for="tile in summaryTiles"
+                            :key="tile.label"
+                            class="px-3 py-2 border rounded"
+                            style="background: var(--color-bg-app); border-color: var(--color-border)"
+                        >
+                            <div class="form-label mb-0.5">{{ tile.label }}</div>
+                            <div class="page-title tabular-nums">{{ tile.value }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div
+                class="p-4 border rounded"
+                style="background: var(--color-bg-surface); border-color: var(--color-border)"
+            >
+                <TabView :tabs="tabs" :model-value="activeTab" @update:model-value="setActiveTab">
+                    <template #profile>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-3xl">
                             <div>
                                 <div class="form-label">Code</div>
                                 <div>{{ entity.entity_code }}</div>
@@ -475,173 +687,249 @@ function destroyTemplate(templateId) {
                                 <div class="form-label">Name</div>
                                 <div>{{ entity.name }}</div>
                             </div>
-                        </div>
-                    </div>
-                    <div class="flex gap-2 mt-4">
-                        <Link v-if="can.update" :href="route('entities.edit', entity.id)">
-                            <Button size="sm">Edit</Button>
-                        </Link>
-                        <Button v-if="can.delete" variant="destructive" size="sm" @click="openDeleteModal">
-                            Delete entity
-                        </Button>
-                    </div>
-                </div>
-
-                <div class="p-4 border rounded" style="background: var(--color-bg-surface); border-color: var(--color-border)">
-                    <div class="flex items-center justify-between gap-2 mb-3">
-                        <div class="form-label mb-0">Entity Statuses</div>
-                        <div v-if="can.update" class="flex gap-2">
-                            <Button size="sm" variant="secondary" @click="openStatusCopyModal">Copy</Button>
-                            <Button size="sm" @click="openStatusModal">Add</Button>
-                        </div>
-                    </div>
-
-                    <CollectimateDataTable
-                        :value="statusRows"
-                        :columns="statusColumns"
-                        :rows="Math.max(statusRows.length, 1)"
-                        :total-records="statusRows.length"
-                        :first="0"
-                        :paginator="true"
-                    >
-                        <template #cell.code="{ row }">{{ row.code || '—' }}</template>
-                        <template #cell.color="{ row }">
-                            <div v-if="row.color" class="inline-flex items-center gap-1.5 min-w-0">
-                                <span
-                                    class="h-3.5 w-3.5 rounded-sm shrink-0 border"
-                                    :style="{ background: row.color, borderColor: 'var(--color-border)' }"
-                                />
-                                <span class="truncate">{{ row.color }}</span>
+                            <div>
+                                <div class="form-label">Created</div>
+                                <div>{{ formatDateTime(entity.created_at) }}</div>
+                                <div class="text-sm mt-0.5" style="color: var(--color-text-muted)">
+                                    {{ actorLabel(entity.creator) }}
+                                </div>
                             </div>
-                            <span v-else>—</span>
-                        </template>
-                        <template #cell.text_color="{ row }">
-                            <div class="inline-flex items-center gap-1.5 min-w-0">
-                                <span
-                                    class="h-3.5 w-3.5 rounded-sm shrink-0 border"
-                                    :style="{
-                                        background: row.text_color || '#ffffff',
-                                        borderColor: 'var(--color-border)',
-                                    }"
-                                />
-                                <span class="truncate">{{ row.text_color || '#ffffff' }}</span>
+                            <div>
+                                <div class="form-label">Updated</div>
+                                <div>{{ formatDateTime(entity.updated_at) }}</div>
+                                <div class="text-sm mt-0.5" style="color: var(--color-text-muted)">
+                                    {{ actorLabel(entity.updater) }}
+                                </div>
                             </div>
-                        </template>
-                        <template #cell.active="{ row }">{{ row.is_active ? 'Yes' : 'No' }}</template>
-                        <template #cell.actions="{ row }">
-                            <ListingRowActions
-                                v-if="can.update"
-                                :on-edit="() => startEditStatus(row)"
-                                :on-delete="() => destroyStatus(row.id)"
-                            />
-                        </template>
-                    </CollectimateDataTable>
-                </div>
-
-                <div class="p-4 border rounded" style="background: var(--color-bg-surface); border-color: var(--color-border)">
-                    <div class="flex items-center justify-between gap-2 mb-3">
-                        <div class="form-label mb-0">Entity Action Codes</div>
-                        <div v-if="can.update" class="flex gap-2">
-                            <Button size="sm" variant="secondary" @click="openActionCopyModal">Copy</Button>
-                            <Button size="sm" @click="openActionModal">Add</Button>
                         </div>
-                    </div>
+                    </template>
 
-                    <CollectimateDataTable
-                        :value="actionRows"
-                        :columns="actionColumns"
-                        :rows="Math.max(actionRows.length, 1)"
-                        :total-records="actionRows.length"
-                        :first="0"
-                        :paginator="true"
-                    >
-                        <template #cell.code="{ row }">{{ row.code || '—' }}</template>
-                        <template #cell.classification="{ row }">
-                            <span
-                                class="inline-flex max-w-full truncate px-2 py-0.5 rounded text-xs font-medium border"
-                                :style="classificationChipStyle(row.classification)"
+                    <template #campaigns>
+                        <div class="space-y-3">
+                            <div class="flex items-center justify-between gap-2">
+                                <div class="form-label mb-0">
+                                    Campaigns ({{ campaignRows.length }})
+                                </div>
+                                <Button v-if="can.campaignsCreate" size="sm" @click="openCampaignModal">
+                                    Add
+                                </Button>
+                            </div>
+
+                            <CollectimateDataTable
+                                :value="campaignRows"
+                                :columns="campaignColumns"
+                                :rows="Math.max(campaignRows.length, 1)"
+                                :total-records="campaignRows.length"
+                                :first="0"
+                                :paginator="true"
                             >
-                                {{ classificationLabel(row.classification) }}
-                            </span>
-                        </template>
-                        <template #cell.active="{ row }">{{ row.is_active ? 'Yes' : 'No' }}</template>
-                        <template #cell.actions="{ row }">
-                            <ListingRowActions
-                                v-if="can.update"
-                                :on-edit="() => startEditAction(row)"
-                                :on-delete="() => destroyAction(row.id)"
-                            />
-                        </template>
-                    </CollectimateDataTable>
-                </div>
-            </div>
-
-            <div class="space-y-6 min-w-0">
-                <div class="p-4 border rounded" style="background: var(--color-bg-surface); border-color: var(--color-border)">
-                    <div class="flex items-center justify-between mb-3">
-                        <div class="form-label mb-0">Campaigns ({{ entity.campaigns?.length ?? 0 }})</div>
-                        <Button v-if="can.campaignsCreate" size="sm" @click="openCampaignModal">Add</Button>
-                    </div>
-                    <Table v-if="entity.campaigns?.length">
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Code</TableHead>
-                                <TableHead>Name</TableHead>
-                                <TableHead>Status</TableHead>
-                                <TableHead>Accounts</TableHead>
-                                <TableHead class="w-[120px]">Actions</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            <TableRow v-for="campaign in entity.campaigns" :key="campaign.id">
-                                <TableCell>{{ campaign.campaign_code }}</TableCell>
-                                <TableCell>{{ campaign.name }}</TableCell>
-                                <TableCell>{{ campaign.status }}</TableCell>
-                                <TableCell>{{ campaign.accounts_count ?? 0 }}</TableCell>
-                                <TableCell>
+                                <template #cell.status="{ row }">{{ row.status || '—' }}</template>
+                                <template #cell.accounts_count="{ row }">
+                                    {{ row.accounts_count ?? 0 }}
+                                </template>
+                                <template #cell.actions="{ row }">
                                     <ListingRowActions
-                                        :view-href="route('campaigns.show', campaign.id)"
-                                        :on-delete="can.campaignsDelete ? () => destroyCampaign(campaign.id) : null"
+                                        :view-href="route('campaigns.show', row.id)"
+                                        :on-delete="
+                                            can.campaignsDelete ? () => destroyCampaign(row.id) : null
+                                        "
                                     />
-                                </TableCell>
-                            </TableRow>
-                        </TableBody>
-                    </Table>
-                    <p v-else style="color: var(--color-text-muted)">No campaigns yet.</p>
-                </div>
-
-                <div class="p-4 border rounded" style="background: var(--color-bg-surface); border-color: var(--color-border)">
-                    <div class="flex items-center justify-between gap-2 mb-3">
-                        <div class="form-label mb-0">Templates</div>
-                        <div v-if="can.update" class="flex gap-2">
-                            <Button size="sm" @click="openTemplateModal">Add</Button>
+                                </template>
+                            </CollectimateDataTable>
                         </div>
-                    </div>
+                    </template>
 
-                    <CollectimateDataTable
-                        :value="templateRows"
-                        :columns="templateColumns"
-                        :rows="Math.max(templateRows.length, 1)"
-                        :total-records="templateRows.length"
-                        :first="0"
-                        :paginator="true"
-                    >
-                        <template #cell.types="{ row }">{{ formatTemplateTypes(row.types) }}</template>
-                        <template #cell.body="{ row }">
-                            <span class="block max-w-xs truncate" :title="row.body">
-                                {{ truncateTemplateBody(row.body) }}
-                            </span>
-                        </template>
-                        <template #cell.active="{ row }">{{ row.is_active ? 'Yes' : 'No' }}</template>
-                        <template #cell.actions="{ row }">
-                            <ListingRowActions
-                                v-if="can.update"
-                                :on-edit="() => startEditTemplate(row)"
-                                :on-delete="() => destroyTemplate(row.id)"
-                            />
-                        </template>
-                    </CollectimateDataTable>
-                </div>
+                    <template #statuses>
+                        <div class="space-y-3">
+                            <div class="flex items-center justify-between gap-2">
+                                <div class="form-label mb-0">Entity Statuses</div>
+                                <div v-if="can.update" class="flex gap-2">
+                                    <Button size="sm" variant="secondary" @click="openStatusCopyModal">
+                                        Copy
+                                    </Button>
+                                    <Button size="sm" @click="openStatusModal">Add</Button>
+                                </div>
+                            </div>
+
+                            <CollectimateDataTable
+                                :value="statusRows"
+                                :columns="statusColumns"
+                                :rows="Math.max(statusRows.length, 1)"
+                                :total-records="statusRows.length"
+                                :first="0"
+                                :paginator="true"
+                            >
+                                <template #cell.code="{ row }">{{ row.code || '—' }}</template>
+                                <template #cell.color="{ row }">
+                                    <div v-if="row.color" class="inline-flex items-center gap-1.5 min-w-0">
+                                        <span
+                                            class="h-3.5 w-3.5 rounded-sm shrink-0 border"
+                                            :style="{
+                                                background: row.color,
+                                                borderColor: 'var(--color-border)',
+                                            }"
+                                        />
+                                        <span class="truncate">{{ row.color }}</span>
+                                    </div>
+                                    <span v-else>—</span>
+                                </template>
+                                <template #cell.text_color="{ row }">
+                                    <div class="inline-flex items-center gap-1.5 min-w-0">
+                                        <span
+                                            class="h-3.5 w-3.5 rounded-sm shrink-0 border"
+                                            :style="{
+                                                background: row.text_color || '#ffffff',
+                                                borderColor: 'var(--color-border)',
+                                            }"
+                                        />
+                                        <span class="truncate">{{ row.text_color || '#ffffff' }}</span>
+                                    </div>
+                                </template>
+                                <template #cell.active="{ row }">
+                                    {{ row.is_active ? 'Yes' : 'No' }}
+                                </template>
+                                <template #cell.actions="{ row }">
+                                    <ListingRowActions
+                                        v-if="can.update"
+                                        :on-edit="() => startEditStatus(row)"
+                                        :on-delete="() => destroyStatus(row.id)"
+                                    />
+                                </template>
+                            </CollectimateDataTable>
+                        </div>
+                    </template>
+
+                    <template #action-codes>
+                        <div class="space-y-3">
+                            <div class="flex items-center justify-between gap-2">
+                                <div class="form-label mb-0">Entity Action Codes</div>
+                                <div v-if="can.update" class="flex gap-2">
+                                    <Button size="sm" variant="secondary" @click="openActionCopyModal">
+                                        Copy
+                                    </Button>
+                                    <Button size="sm" @click="openActionModal">Add</Button>
+                                </div>
+                            </div>
+
+                            <CollectimateDataTable
+                                :value="actionRows"
+                                :columns="actionColumns"
+                                :rows="Math.max(actionRows.length, 1)"
+                                :total-records="actionRows.length"
+                                :first="0"
+                                :paginator="true"
+                            >
+                                <template #cell.code="{ row }">{{ row.code || '—' }}</template>
+                                <template #cell.classification="{ row }">
+                                    <span
+                                        class="inline-flex max-w-full truncate px-2 py-0.5 rounded text-xs border"
+                                        :style="classificationChipStyle(row.classification)"
+                                    >
+                                        {{ classificationLabel(row.classification) }}
+                                    </span>
+                                </template>
+                                <template #cell.active="{ row }">
+                                    {{ row.is_active ? 'Yes' : 'No' }}
+                                </template>
+                                <template #cell.actions="{ row }">
+                                    <ListingRowActions
+                                        v-if="can.update"
+                                        :on-edit="() => startEditAction(row)"
+                                        :on-delete="() => destroyAction(row.id)"
+                                    />
+                                </template>
+                            </CollectimateDataTable>
+                        </div>
+                    </template>
+
+                    <template #templates>
+                        <div class="space-y-3">
+                            <div class="flex items-center justify-between gap-2">
+                                <div class="form-label mb-0">Templates</div>
+                                <div v-if="can.update" class="flex gap-2">
+                                    <Button size="sm" @click="openTemplateModal">Add</Button>
+                                </div>
+                            </div>
+
+                            <CollectimateDataTable
+                                :value="templateRows"
+                                :columns="templateColumns"
+                                :rows="Math.max(templateRows.length, 1)"
+                                :total-records="templateRows.length"
+                                :first="0"
+                                :paginator="true"
+                            >
+                                <template #cell.types="{ row }">
+                                    {{ formatTemplateTypes(row.types) }}
+                                </template>
+                                <template #cell.body="{ row }">
+                                    <span class="block max-w-xs truncate" :title="row.body">
+                                        {{ truncateTemplateBody(row.body) }}
+                                    </span>
+                                </template>
+                                <template #cell.active="{ row }">
+                                    {{ row.is_active ? 'Yes' : 'No' }}
+                                </template>
+                                <template #cell.actions="{ row }">
+                                    <ListingRowActions
+                                        v-if="can.update"
+                                        :on-edit="() => startEditTemplate(row)"
+                                        :on-delete="() => destroyTemplate(row.id)"
+                                    />
+                                </template>
+                            </CollectimateDataTable>
+                        </div>
+                    </template>
+
+                    <template #knowledge-groups>
+                        <div class="space-y-3">
+                            <div class="flex items-center justify-between gap-2">
+                                <div class="form-label mb-0">Knowledge Groups</div>
+                                <div v-if="can.update" class="flex gap-2">
+                                    <Button size="sm" @click="openKnowledgeGroupModal">Add</Button>
+                                </div>
+                            </div>
+
+                            <CollectimateDataTable
+                                :value="knowledgeGroupRows"
+                                :columns="knowledgeGroupColumns"
+                                :rows="Math.max(knowledgeGroupRows.length, 1)"
+                                :total-records="knowledgeGroupRows.length"
+                                :first="0"
+                                :paginator="true"
+                            >
+                                <template #cell.code="{ row }">{{ row.code || '—' }}</template>
+                                <template #cell.active="{ row }">
+                                    {{ row.is_active ? 'Yes' : 'No' }}
+                                </template>
+                                <template #cell.default="{ row }">
+                                    {{ row.is_default ? 'Yes' : 'No' }}
+                                </template>
+                                <template #cell.items_count="{ row }">
+                                    {{ row.items_count ?? 0 }}
+                                </template>
+                                <template #cell.actions="{ row }">
+                                    <ListingRowActions
+                                        :view-href="
+                                            route('entities.knowledge-groups.show', [
+                                                entity.id,
+                                                row.id,
+                                            ])
+                                        "
+                                        :on-edit="
+                                            can.update ? () => startEditKnowledgeGroup(row) : null
+                                        "
+                                        :on-delete="
+                                            can.update && !row.is_default
+                                                ? () => destroyKnowledgeGroup(row)
+                                                : null
+                                        "
+                                    />
+                                </template>
+                            </CollectimateDataTable>
+                        </div>
+                    </template>
+                </TabView>
             </div>
         </div>
 
@@ -879,6 +1167,50 @@ function destroyTemplate(templateId) {
                 <div class="flex justify-end gap-2">
                     <Button type="button" variant="secondary" size="sm" @click="closeTemplateModal">Cancel</Button>
                     <Button type="submit" size="sm" :disabled="templateForm.processing">Save</Button>
+                </div>
+            </form>
+        </Modal>
+
+        <Modal :show="showKnowledgeGroupModal" max-width="lg" @close="closeKnowledgeGroupModal">
+            <form class="p-6 space-y-4" @submit.prevent="submitKnowledgeGroup">
+                <h2 class="text-lg font-semibold">
+                    {{ editingKnowledgeGroupId ? 'Edit knowledge group' : 'Add knowledge group' }}
+                </h2>
+                <div>
+                    <label class="form-label block mb-1">Name</label>
+                    <Input v-model="knowledgeGroupForm.name" class="w-full" />
+                    <InputError :message="knowledgeGroupForm.errors.name" />
+                </div>
+                <div>
+                    <label class="form-label block mb-1">Code</label>
+                    <Input v-model="knowledgeGroupForm.code" class="w-full" />
+                    <InputError :message="knowledgeGroupForm.errors.code" />
+                </div>
+                <div>
+                    <label class="form-label block mb-1">Description</label>
+                    <Textarea v-model="knowledgeGroupForm.description" rows="3" class="w-full" />
+                </div>
+                <div>
+                    <label class="form-label block mb-1">Order</label>
+                    <Input
+                        v-model.number="knowledgeGroupForm.sort_order"
+                        type="number"
+                        min="0"
+                        class="w-full"
+                    />
+                </div>
+                <div class="flex items-center gap-2">
+                    <Checkbox id="knowledge-group-active" v-model="knowledgeGroupForm.is_active" />
+                    <label for="knowledge-group-active" class="text-sm">Active</label>
+                </div>
+                <InputError :message="knowledgeGroupForm.errors.is_active" />
+                <div class="flex justify-end gap-2">
+                    <Button type="button" variant="secondary" size="sm" @click="closeKnowledgeGroupModal">
+                        Cancel
+                    </Button>
+                    <Button type="submit" size="sm" :disabled="knowledgeGroupForm.processing">
+                        Save
+                    </Button>
                 </div>
             </form>
         </Modal>

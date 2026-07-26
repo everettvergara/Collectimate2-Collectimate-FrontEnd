@@ -12,6 +12,8 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DemoModeController;
 use App\Http\Controllers\EntityActionCodeController;
 use App\Http\Controllers\EntityController;
+use App\Http\Controllers\EntityKnowledgeGroupController;
+use App\Http\Controllers\EntityKnowledgeItemController;
 use App\Http\Controllers\EntityStatusController;
 use App\Http\Controllers\EntityTemplateController;
 use App\Http\Controllers\ImportController;
@@ -19,6 +21,11 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\RolesController;
 use App\Http\Controllers\SettingController;
+use App\Http\Controllers\SmsBatchController;
+use App\Http\Controllers\SmsCallbackEventController;
+use App\Http\Controllers\SmsConfigController;
+use App\Http\Controllers\SmsDashboardController;
+use App\Http\Controllers\SmsReceivedMessageController;
 use App\Http\Controllers\UsersController;
 use Illuminate\Support\Facades\Route;
 
@@ -124,6 +131,14 @@ Route::middleware(['auth'])->group(function () {
     });
     Route::middleware('permission:entities.view')->group(function () {
         Route::get('/entities/{entity}', [EntityController::class, 'show'])->name('entities.show');
+        Route::get(
+            '/entities/{entity}/knowledge-groups/{entityKnowledgeGroup}',
+            [EntityKnowledgeGroupController::class, 'show'],
+        )->name('entities.knowledge-groups.show');
+        Route::get(
+            '/entities/{entity}/knowledge/{entityKnowledgeItem}/download',
+            [EntityKnowledgeItemController::class, 'download'],
+        )->name('entities.knowledge.download');
     });
     Route::middleware('permission:entities.update')->group(function () {
         Route::get('/entities/{entity}/edit', [EntityController::class, 'edit'])->name('entities.edit');
@@ -139,6 +154,12 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/entities/{entity}/templates', [EntityTemplateController::class, 'store'])->name('entities.templates.store');
         Route::put('/entities/{entity}/templates/{entityTemplate}', [EntityTemplateController::class, 'update'])->name('entities.templates.update');
         Route::delete('/entities/{entity}/templates/{entityTemplate}', [EntityTemplateController::class, 'destroy'])->name('entities.templates.destroy');
+        Route::post('/entities/{entity}/knowledge-groups', [EntityKnowledgeGroupController::class, 'store'])->name('entities.knowledge-groups.store');
+        Route::put('/entities/{entity}/knowledge-groups/{entityKnowledgeGroup}', [EntityKnowledgeGroupController::class, 'update'])->name('entities.knowledge-groups.update');
+        Route::delete('/entities/{entity}/knowledge-groups/{entityKnowledgeGroup}', [EntityKnowledgeGroupController::class, 'destroy'])->name('entities.knowledge-groups.destroy');
+        Route::post('/entities/{entity}/knowledge', [EntityKnowledgeItemController::class, 'store'])->name('entities.knowledge.store');
+        Route::put('/entities/{entity}/knowledge/{entityKnowledgeItem}', [EntityKnowledgeItemController::class, 'update'])->name('entities.knowledge.update');
+        Route::delete('/entities/{entity}/knowledge/{entityKnowledgeItem}', [EntityKnowledgeItemController::class, 'destroy'])->name('entities.knowledge.destroy');
     });
     Route::delete('/entities/{entity}', [EntityController::class, 'destroy'])
         ->middleware('permission:entities.delete')
@@ -154,9 +175,7 @@ Route::middleware(['auth'])->group(function () {
     });
     Route::middleware('permission:accounts.update')->group(function () {
         Route::get('/accounts/bulk/options', [AccountController::class, 'bulkOptions'])->name('accounts.bulk.options');
-        Route::post('/accounts/bulk/campaign', [AccountController::class, 'bulkAssignCampaign'])->name('accounts.bulk.campaign');
-        Route::post('/accounts/bulk/agent', [AccountController::class, 'bulkAssignAgent'])->name('accounts.bulk.agent');
-        Route::post('/accounts/bulk/status', [AccountController::class, 'bulkAssignStatus'])->name('accounts.bulk.status');
+        Route::post('/accounts/bulk/assignment', [AccountController::class, 'bulkAssignAssignment'])->name('accounts.bulk.assignment');
         Route::post('/accounts/bulk/activity', [AccountController::class, 'bulkStoreActivity'])->name('accounts.bulk.activity');
     });
     Route::middleware('permission:accounts.view')->group(function () {
@@ -203,6 +222,62 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/demo-mode', [DemoModeController::class, 'index'])->name('demo-mode.index');
         Route::post('/demo-mode/clear', [DemoModeController::class, 'clear'])->name('demo-mode.clear');
         Route::post('/demo-mode/create-demo', [DemoModeController::class, 'createDemo'])->name('demo-mode.create-demo');
+    });
+
+    Route::middleware('permission:sms.view')->group(function () {
+        Route::get('/sms', [SmsDashboardController::class, 'index'])->name('sms.dashboard');
+        Route::get('/sms/poll', [SmsDashboardController::class, 'poll'])->name('sms.poll');
+        Route::get('/sms/batches', [SmsBatchController::class, 'index'])->name('sms.batches.index');
+        Route::get('/sms/batches/export', [SmsBatchController::class, 'export'])
+            ->middleware('permission:sms.export')
+            ->name('sms.batches.export');
+        Route::get('/sms/batches/{smsBatch}', [SmsBatchController::class, 'show'])->name('sms.batches.show');
+        Route::get('/sms/received', [SmsReceivedMessageController::class, 'index'])->name('sms.received.index');
+        Route::get('/sms/received/export', [SmsReceivedMessageController::class, 'export'])
+            ->middleware('permission:sms.export')
+            ->name('sms.received.export');
+        Route::get('/sms/received/account-search', [SmsReceivedMessageController::class, 'searchAccounts'])->name('sms.received.account-search');
+        Route::post('/sms/received/{smsReceivedMessage}/associate', [SmsReceivedMessageController::class, 'associate'])->name('sms.received.associate');
+        Route::post('/sms/received/{smsReceivedMessage}/reply', [SmsReceivedMessageController::class, 'reply'])->name('sms.received.reply');
+        Route::post('/sms/received/{smsReceivedMessage}/ignore', [SmsReceivedMessageController::class, 'ignore'])->name('sms.received.ignore');
+        Route::delete('/sms/received/{smsReceivedMessage}', [SmsReceivedMessageController::class, 'destroy'])->name('sms.received.destroy');
+        Route::get('/sms/callbacks', [SmsCallbackEventController::class, 'index'])->name('sms.callbacks.index');
+        Route::get('/sms/callbacks/export', [SmsCallbackEventController::class, 'export'])
+            ->middleware('permission:sms.export')
+            ->name('sms.callbacks.export');
+    });
+    Route::middleware('permission:sms.manage')->group(function () {
+        Route::get('/sms/config', [SmsConfigController::class, 'index'])->name('sms.config');
+        Route::put('/sms/config', [SmsConfigController::class, 'update'])->name('sms.config.update');
+        Route::post('/sms/config/test-ports', [SmsConfigController::class, 'testPorts'])->name('sms.config.test-ports');
+        Route::post('/sms/config/sync', [SmsConfigController::class, 'syncConfig'])->name('sms.config.sync');
+        Route::post('/sms/device-groups', [SmsConfigController::class, 'storeDeviceGroup'])->name('sms.device-groups.store');
+        Route::put('/sms/device-groups/{smsDeviceGroup}', [SmsConfigController::class, 'updateDeviceGroup'])->name('sms.device-groups.update');
+        Route::delete('/sms/device-groups/{smsDeviceGroup}', [SmsConfigController::class, 'destroyDeviceGroup'])->name('sms.device-groups.destroy');
+        Route::post('/sms/devices', [SmsConfigController::class, 'storeDevice'])->name('sms.devices.store');
+        Route::put('/sms/devices/{smsDevice}', [SmsConfigController::class, 'updateDevice'])->name('sms.devices.update');
+        Route::delete('/sms/devices/{smsDevice}', [SmsConfigController::class, 'destroyDevice'])->name('sms.devices.destroy');
+        Route::post('/sms/service/start', [SmsDashboardController::class, 'startService'])->name('sms.service.start');
+        Route::post('/sms/service/stop', [SmsDashboardController::class, 'stopService'])->name('sms.service.stop');
+        Route::post('/sms/service/restart', [SmsDashboardController::class, 'restartService'])->name('sms.service.restart');
+        Route::post('/sms/health/refresh', [SmsDashboardController::class, 'refreshHealth'])->name('sms.health.refresh');
+        Route::post('/sms/devices/refresh', [SmsDashboardController::class, 'refreshDevices'])->name('sms.devices.refresh');
+        Route::post('/sms/dispatch', [SmsDashboardController::class, 'dispatchTick'])->name('sms.dispatch');
+        Route::post('/sms/probe', [SmsDashboardController::class, 'probe'])->name('sms.probe');
+        Route::post('/sms/auto-recovery', [SmsDashboardController::class, 'updateAutoRecovery'])->name('sms.auto-recovery');
+        Route::post('/sms/runtime-devices/restart', [SmsDashboardController::class, 'restartDevice'])->name('sms.runtime-devices.restart');
+        Route::post('/sms/runtime-devices/start', [SmsDashboardController::class, 'startDevice'])->name('sms.runtime-devices.start');
+        Route::post('/sms/runtime-devices/delete', [SmsDashboardController::class, 'deleteDeviceRuntime'])->name('sms.runtime-devices.delete');
+        Route::put('/sms/batches/{smsBatch}', [SmsBatchController::class, 'update'])->name('sms.batches.update');
+        Route::delete('/sms/batches/{smsBatch}', [SmsBatchController::class, 'destroy'])->name('sms.batches.destroy');
+        Route::put('/sms/batches/{smsBatch}/items/{item}', [SmsBatchController::class, 'updateItem'])->name('sms.batches.items.update');
+        Route::post('/sms/batches/{smsBatch}/pause', [SmsBatchController::class, 'pause'])->name('sms.batches.pause');
+        Route::post('/sms/batches/{smsBatch}/resume', [SmsBatchController::class, 'resume'])->name('sms.batches.resume');
+        Route::post('/sms/batches/{smsBatch}/priority', [SmsBatchController::class, 'bumpPriority'])->name('sms.batches.priority');
+    });
+    Route::middleware('permission:sms.queue.cancel')->group(function () {
+        Route::post('/sms/batches/{smsBatch}/cancel', [SmsBatchController::class, 'cancel'])->name('sms.batches.cancel');
+        Route::post('/sms/batches/{smsBatch}/items/{item}/cancel', [SmsBatchController::class, 'cancelItem'])->name('sms.batches.items.cancel');
     });
 
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');

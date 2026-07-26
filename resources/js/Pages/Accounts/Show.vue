@@ -41,6 +41,8 @@ const props = defineProps({
     entityTemplates: Array,
     actorLabel: String,
     can: Object,
+    smsDeviceGroups: { type: Array, default: () => [] },
+    smsDevices: { type: Array, default: () => [] },
 });
 
 const fieldsEditing = ref(false);
@@ -189,7 +191,7 @@ const activityCountGroups = computed(() => {
                 { label: 'Overall', count: props.accountStats?.activity_total ?? 0, emphasize: true },
                 {
                     label: 'Excl. System',
-                    count: props.accountStats?.activity_total_excluding_system ?? 0,
+                    count: props.account?.non_system_activities_count ?? 0,
                     emphasize: true,
                 },
                 { label: 'Positive', count: props.account?.positive_activity_count ?? 0, emphasize: true },
@@ -1377,6 +1379,8 @@ function goActivitiesPage(url) {
             :contact-options="contactSelectOptions"
             :address-options="addressSelectOptions"
             :actor-label="actorLabel"
+            :sms-device-groups="smsDeviceGroups"
+            :sms-devices="smsDevices"
             :submit-url="route('accounts.activities.store', account.id)"
             @close="closeActivityModal"
         />

@@ -3,7 +3,7 @@
 Owns: build order only.  
 Scope → [01](01-vision-and-scope.md). Domain → [03](03-domain-model.md). Modules → [04](04-modules.md). Stack/UI → [07](07-technical-standards.md) / [06](06-ui-standards.md).
 
-Finish each slice’s baseline before expanding sideways. Hierarchy: **Entity → Campaign → Account**. Knowledge Center is out of Phase 1. Never use Client/Customer as synonyms for Entity.
+Finish each slice’s baseline before expanding sideways. Hierarchy: **Entity → Campaign → Account**. Future-nav Knowledge Center / AI-RAG products are out of Phase 1; Entity Knowledge repository (Groups on Entity Show → items on Group Show) is in scope. Never use Client/Customer as synonyms for Entity.
 
 ## Sequencing principles
 
@@ -107,6 +107,10 @@ flowchart TD
 - Export/Reports after Slice 8; Import can parallel Reports  
 - Do not start Account CRUD before Slice 7  
 
+## Slice 14 — SMS Queuing (product slice)
+
+SMS Configuration · SMS Dashboard · Laravel-owned queue from Account SMS Send (single + bulk) · C++ HTTP client + callback · `sms:dispatch` / `sms:work` · batch cancel. Contract: `laravel-cpp-sms-integration-contract.md` (sibling repo docs).
+
 ## Not in this roadmap
 
-Knowledge Center · SMS/Calling/Email/Messaging products · AI/RAG · Docker/K8s/microservices · React/Livewire-primary UI · module named “Contracts” · labels Client/Customer for Entity
+Future-nav Knowledge Center product · Calling/Email/Messaging products · AI/RAG/auto-reply runtime · Docker/K8s/microservices · React/Livewire-primary UI · module named “Contracts” · labels Client/Customer for Entity

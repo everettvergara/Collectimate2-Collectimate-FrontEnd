@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Enums\ActionCodeClassification;
 use App\Enums\AgentProfileStatus;
 use App\Enums\ContactInfoType;
+use App\Enums\SmsBatchSource;
+use App\Enums\SmsTargetMode;
 use App\Models\Account;
 use App\Models\AccountActivity;
 use App\Models\AccountActivityFile;
@@ -19,8 +21,12 @@ use App\Models\Entity;
 use App\Models\EntityActionCode;
 use App\Models\EntityStatus;
 use App\Models\EntityTemplate;
+use App\Models\SmsDevice;
+use App\Models\SmsDeviceGroup;
 use App\Models\User;
+use App\Services\AccountActivityTotalsSync;
 use App\Services\AuditLogger;
+use App\Services\Sms\SmsQueueService;
 use App\Support\AccountTemplateTokens;
 use App\Support\CsvExporter;
 use App\Support\FlatJsonObject;
@@ -59,6 +65,7 @@ class AccountController extends Controller
                 'entity_action_code_id',
                 'assigned_agent_profile_id',
                 'activities_count',
+                'non_system_activities_count',
                 'last_activity_at',
                 'positive_activity_count',
                 'negative_activity_count',
@@ -91,6 +98,7 @@ class AccountController extends Controller
                 'product',
                 'created_at',
                 'id',
+                'non_system_activities_count',
                 'positive_activity_count',
                 'negative_activity_count',
                 'neutral_activity_count',
@@ -119,6 +127,7 @@ class AccountController extends Controller
                 ->orderBy('name')
                 ->get(['id', 'name', 'code']),
             'actorLabel' => $this->actorLabelForUser($user->loadMissing('agentProfile')),
+            ...$this->smsTargetingProps(),
         ]);
     }
 
@@ -251,6 +260,7 @@ class AccountController extends Controller
                 'update' => $user->hasPermission('accounts.update'),
                 'delete' => $user->hasPermission('accounts.delete'),
             ],
+            ...$this->smsTargetingProps(),
         ]);
     }
 
@@ -507,7 +517,7 @@ class AccountController extends Controller
         return back()->with('success', 'Address removed.');
     }
 
-    public function storeActivity(Request $request, Account $account, AuditLogger $auditLogger): RedirectResponse
+    public function storeActivity(Request $request, Account $account, AuditLogger $auditLogger, SmsQueueService $smsQueue): RedirectResponse
     {
         $entityId = $account->campaign?->entity_id;
 
@@ -530,6 +540,10 @@ class AccountController extends Controller
                 Rule::exists('account_addresses', 'id')->where(fn ($query) => $query->where('account_id', $account->id)->whereNull('deleted_at')),
             ],
             'remarks' => ['nullable', 'string', 'max:5000'],
+            'queue_for_sms' => ['sometimes', 'boolean'],
+            'sms_target_mode' => ['nullable', Rule::in(SmsTargetMode::values())],
+            'sms_device_group_id' => ['nullable', 'integer', 'exists:sms_device_groups,id'],
+            'sms_device_id' => ['nullable', 'integer', 'exists:sms_devices,id'],
             'attachments' => ['nullable', 'array', 'max:10'],
             'attachments.*' => ['file', 'mimes:jpg,jpeg,png,gif,webp,pdf', 'max:5120'],
         ]);
@@ -541,6 +555,33 @@ class AccountController extends Controller
             ->first();
 
         abort_unless($activityType, 422);
+
+        $queueForSms = $request->boolean('queue_for_sms') && $activityType->code === 'sms_send';
+        $smsTargeting = null;
+
+        if ($queueForSms) {
+            if (empty($data['reference_contact_info_id'])) {
+                throw ValidationException::withMessages([
+                    'reference_contact_info_id' => 'Select a mobile or landline contact to queue SMS.',
+                ]);
+            }
+            $contact = AccountContactInfo::query()
+                ->whereKey($data['reference_contact_info_id'])
+                ->where('account_id', $account->id)
+                ->first();
+            $recipient = $smsQueue->resolveRecipientFromContact($contact);
+            if (! $recipient) {
+                throw ValidationException::withMessages([
+                    'reference_contact_info_id' => 'Reference contact must be a mobile or landline with a phone number.',
+                ]);
+            }
+            if (trim((string) ($data['reference_text'] ?? '')) === '') {
+                throw ValidationException::withMessages([
+                    'reference_text' => 'Message text is required when queueing SMS.',
+                ]);
+            }
+            $smsTargeting = $this->validatedSmsTargeting($data);
+        }
 
         $this->assertEntityCatalogIds($entityId, $data['entity_status_id'], $data['entity_action_code_id'] ?? null);
 
@@ -591,7 +632,40 @@ class AccountController extends Controller
 
         $auditLogger->log('account.activity.created', $activity, $account->campaign_id);
 
-        return back()->with('success', 'Activity added.');
+        $success = 'Activity added.';
+
+        if ($queueForSms) {
+            $contact = AccountContactInfo::query()
+                ->whereKey($data['reference_contact_info_id'])
+                ->where('account_id', $account->id)
+                ->first();
+            $recipient = $smsQueue->resolveRecipientFromContact($contact);
+            $message = (string) ($data['reference_text'] ?? '');
+
+            $batch = $smsQueue->enqueueBatch(
+                SmsBatchSource::AccountActivitySingle,
+                $user,
+                collect([[
+                    'account' => $account,
+                    'activity' => $activity,
+                    'message' => $message,
+                    'recipient' => $recipient,
+                ]]),
+                $message,
+                ['account_id' => $account->id],
+                $activity,
+                $smsTargeting,
+            );
+
+            $auditLogger->log('sms.batch.enqueued', $batch, $account->campaign_id, [
+                'source' => 'account_activity_single',
+                'total' => $batch->total,
+            ]);
+
+            $success = "Activity added. Queued {$batch->queued} SMS (batch #{$batch->id}).";
+        }
+
+        return back()->with('success', $success);
     }
 
     public function downloadActivityFile(
@@ -612,7 +686,7 @@ class AccountController extends Controller
         $accountActivity->files()->delete();
         $accountActivity->delete();
 
-        $this->syncActivityCounts($account);
+        app(AccountActivityTotalsSync::class)->sync($account);
 
         $auditLogger->log('account.activity.deleted', $accountActivity, $account->campaign_id);
 
@@ -629,7 +703,7 @@ class AccountController extends Controller
                 'entity' => null,
                 'campaign_ids' => [],
                 'campaigns' => [],
-                'agents' => [],
+                'agents_by_campaign' => [],
                 'statuses' => [],
                 'actions' => [],
                 'templates' => [],
@@ -646,7 +720,7 @@ class AccountController extends Controller
                 'entity' => null,
                 'campaign_ids' => [],
                 'campaigns' => [],
-                'agents' => [],
+                'agents_by_campaign' => [],
                 'statuses' => [],
                 'actions' => [],
                 'templates' => [],
@@ -663,7 +737,7 @@ class AccountController extends Controller
                 'entity' => null,
                 'campaign_ids' => [],
                 'campaigns' => [],
-                'agents' => [],
+                'agents_by_campaign' => [],
                 'statuses' => [],
                 'actions' => [],
                 'templates' => [],
@@ -688,7 +762,7 @@ class AccountController extends Controller
         }
 
         $campaigns = $campaignsQuery->get(['id', 'name', 'entity_id']);
-        $agents = $this->agentsAssignedToAllCampaigns($campaignIds);
+        $agentsByCampaign = $this->assignableAgentsByCampaign($campaigns);
 
         $statuses = EntityStatus::query()
             ->where('entity_id', $entityId)
@@ -715,7 +789,7 @@ class AccountController extends Controller
             'entity' => $entity,
             'campaign_ids' => $campaignIds->values()->all(),
             'campaigns' => $campaigns,
-            'agents' => $agents,
+            'agents_by_campaign' => $agentsByCampaign,
             'statuses' => $statuses,
             'actions' => $actions,
             'templates' => $templates,
@@ -724,13 +798,15 @@ class AccountController extends Controller
         ]);
     }
 
-    public function bulkAssignCampaign(Request $request, AuditLogger $auditLogger): RedirectResponse
+    public function bulkAssignAssignment(Request $request, AuditLogger $auditLogger): RedirectResponse
     {
         $data = $request->validate([
             'scope' => ['required', Rule::in(['selected', 'all'])],
             'account_ids' => ['required_if:scope,selected', 'array'],
             'account_ids.*' => ['integer', 'exists:accounts,id'],
             'campaign_id' => ['required', 'integer', 'exists:campaigns,id'],
+            'entity_status_id' => ['nullable', 'integer', 'exists:entity_statuses,id'],
+            'assigned_agent_profile_id' => ['nullable', 'integer', 'exists:agent_profiles,id'],
             'remarks' => ['required', 'string', 'max:5000'],
         ]);
 
@@ -752,154 +828,36 @@ class AccountController extends Controller
             $this->failBulk('Cannot reassign: one or more account numbers already exist on the target campaign.');
         }
 
-        /** @var User $user */
-        $user = $request->user();
-        $filters = $this->resolveListingFilters($request);
-        $count = 0;
-        $accountIds = [];
+        $statusId = isset($data['entity_status_id']) ? (int) $data['entity_status_id'] : null;
+        $agentId = isset($data['assigned_agent_profile_id']) ? (int) $data['assigned_agent_profile_id'] : null;
 
-        DB::transaction(function () use ($query, $targetCampaign, $data, $user, $auditLogger, &$count, &$accountIds): void {
-            (clone $query)->orderBy('id')->with('campaign:id,entity_id')->chunkById(100, function (Collection $accounts) use ($targetCampaign, $data, $user, $auditLogger, &$count, &$accountIds): void {
-                foreach ($accounts as $account) {
-                    /** @var Account $account */
-                    $fromCampaignId = (int) $account->campaign_id;
-                    $fromAgentId = $account->assigned_agent_profile_id;
+        if ($statusId) {
+            $this->assertEntityCatalogIds($entityId, $statusId, null);
+        }
 
-                    $agentStillValid = $fromAgentId && CampaignAssignment::query()
-                        ->where('campaign_id', $targetCampaign->id)
-                        ->where('agent_profile_id', $fromAgentId)
-                        ->exists();
-
-                    $account->update([
-                        'campaign_id' => $targetCampaign->id,
-                        'assigned_agent_profile_id' => $agentStillValid ? $fromAgentId : null,
-                        'updated_by' => $user->id,
-                    ]);
-
-                    $auditLogger->log('account.bulk.campaign_assigned', $account, $account->campaign_id, [
-                        'bulk' => true,
-                        'from_campaign_id' => $fromCampaignId,
-                        'to_campaign_id' => (int) $targetCampaign->id,
-                        'from_assigned_agent_profile_id' => $fromAgentId,
-                        'to_assigned_agent_profile_id' => $account->assigned_agent_profile_id,
-                        'remarks' => $data['remarks'],
-                    ]);
-
-                    $count++;
-                    $accountIds[] = $account->id;
-                }
-            });
-        });
-
-        $auditLogger->log('accounts.bulk.campaign_assigned', null, (int) $targetCampaign->id, [
-            'scope' => $data['scope'],
-            'count' => $count,
-            'campaign_id' => (int) $targetCampaign->id,
-            'entity_id' => $entityId,
-            'remarks' => $data['remarks'],
-            'filters' => $filters,
-            'account_ids' => $data['scope'] === 'selected' ? ($data['account_ids'] ?? []) : $accountIds,
-        ]);
-
-        return redirect()->route('accounts.index', array_filter($filters, fn ($value) => $value !== null && $value !== ''))
-            ->with('success', "Assigned {$count} account(s) to campaign.");
-    }
-
-    public function bulkAssignAgent(Request $request, AuditLogger $auditLogger): RedirectResponse
-    {
-        $data = $request->validate([
-            'scope' => ['required', Rule::in(['selected', 'all'])],
-            'account_ids' => ['required_if:scope,selected', 'array'],
-            'account_ids.*' => ['integer', 'exists:accounts,id'],
-            'assigned_agent_profile_id' => ['required', 'integer', 'exists:agent_profiles,id'],
-            'remarks' => ['required', 'string', 'max:5000'],
-        ]);
-
-        $query = $this->bulkTargetQuery($request);
-        $this->assertSingleEntityId($query);
-
-        $campaignIds = (clone $query)->distinct()->pluck('campaign_id');
-        $agentId = (int) $data['assigned_agent_profile_id'];
-
-        foreach ($campaignIds as $campaignId) {
+        if ($agentId) {
             $assigned = CampaignAssignment::query()
-                ->where('campaign_id', $campaignId)
+                ->where('campaign_id', $targetCampaign->id)
                 ->where('agent_profile_id', $agentId)
                 ->exists();
 
             if (! $assigned) {
-                $this->failBulk('Selected agent must be assigned to every campaign in the selection.');
+                $this->failBulk('Selected agent must be assigned to the target campaign.');
             }
         }
 
-        /** @var User $user */
-        $user = $request->user();
-        $filters = $this->resolveListingFilters($request);
-        $count = 0;
-        $accountIds = [];
-
-        DB::transaction(function () use ($query, $agentId, $data, $user, $auditLogger, &$count, &$accountIds): void {
-            (clone $query)->orderBy('id')->chunkById(100, function (Collection $accounts) use ($agentId, $data, $user, $auditLogger, &$count, &$accountIds): void {
-                foreach ($accounts as $account) {
-                    /** @var Account $account */
-                    $fromAgentId = $account->assigned_agent_profile_id;
-
-                    $account->update([
-                        'assigned_agent_profile_id' => $agentId,
-                        'updated_by' => $user->id,
-                    ]);
-
-                    $auditLogger->log('account.bulk.agent_assigned', $account, $account->campaign_id, [
-                        'bulk' => true,
-                        'from_assigned_agent_profile_id' => $fromAgentId,
-                        'to_assigned_agent_profile_id' => $agentId,
-                        'remarks' => $data['remarks'],
-                    ]);
-
-                    $count++;
-                    $accountIds[] = $account->id;
-                }
-            });
-        });
-
-        $auditLogger->log('accounts.bulk.agent_assigned', null, null, [
-            'scope' => $data['scope'],
-            'count' => $count,
-            'assigned_agent_profile_id' => $agentId,
-            'remarks' => $data['remarks'],
-            'filters' => $filters,
-            'account_ids' => $data['scope'] === 'selected' ? ($data['account_ids'] ?? []) : $accountIds,
-        ]);
-
-        return redirect()->route('accounts.index', array_filter($filters, fn ($value) => $value !== null && $value !== ''))
-            ->with('success', "Assigned agent on {$count} account(s).");
-    }
-
-    public function bulkAssignStatus(Request $request, AuditLogger $auditLogger): RedirectResponse
-    {
-        $data = $request->validate([
-            'scope' => ['required', Rule::in(['selected', 'all'])],
-            'account_ids' => ['required_if:scope,selected', 'array'],
-            'account_ids.*' => ['integer', 'exists:accounts,id'],
-            'entity_status_id' => ['required', 'integer', 'exists:entity_statuses,id'],
-            'entity_action_code_id' => ['nullable', 'integer', 'exists:entity_action_codes,id'],
-            'remarks' => ['required', 'string', 'max:5000'],
-        ]);
-
-        $query = $this->bulkTargetQuery($request);
-        $entityId = $this->assertSingleEntityId($query);
-        $this->assertEntityCatalogIds($entityId, $data['entity_status_id'], $data['entity_action_code_id'] ?? null);
-
-        $typeId = ActivityType::query()->where('code', 'others')->where('is_active', true)->value('id')
-            ?? ActivityType::query()
-                ->where('is_active', true)
-                ->whereIn('code', ActivityType::LOCKED_CODES)
-                ->orderBy('sort_order')
-                ->value('id');
-
-        if (! $typeId) {
-            $this->failBulk('No activity type available.');
+        $systemTypeId = ActivityType::query()->where('code', 'system')->where('is_active', true)->value('id');
+        if (! $systemTypeId) {
+            $this->failBulk('System activity type is not available.');
         }
+
+        $targetCampaignName = $targetCampaign->name;
+        $targetStatusName = $statusId
+            ? (string) EntityStatus::query()->whereKey($statusId)->value('name')
+            : null;
+        $targetAgentName = $agentId
+            ? $this->agentProfileLabel(AgentProfile::query()->find($agentId))
+            : null;
 
         /** @var User $user */
         $user = $request->user();
@@ -908,60 +866,140 @@ class AccountController extends Controller
         $count = 0;
         $accountIds = [];
 
-        DB::transaction(function () use ($query, $data, $typeId, $user, $auditLogger, &$count, &$accountIds): void {
-            (clone $query)->orderBy('id')->chunkById(100, function (Collection $accounts) use ($data, $typeId, $user, $auditLogger, &$count, &$accountIds): void {
-                foreach ($accounts as $account) {
-                    /** @var Account $account */
-                    $fromStatusId = $account->entity_status_id;
-                    $fromActionId = $account->entity_action_code_id;
+        DB::transaction(function () use (
+            $query,
+            $targetCampaign,
+            $targetCampaignName,
+            $statusId,
+            $targetStatusName,
+            $agentId,
+            $targetAgentName,
+            $systemTypeId,
+            $data,
+            $user,
+            $auditLogger,
+            &$count,
+            &$accountIds,
+        ): void {
+            (clone $query)
+                ->orderBy('id')
+                ->with([
+                    'campaign:id,name,entity_id',
+                    'entityStatus:id,name',
+                    'assignedAgentProfile:id,display_name,first_name,last_name',
+                ])
+                ->chunkById(100, function (Collection $accounts) use (
+                    $targetCampaign,
+                    $targetCampaignName,
+                    $statusId,
+                    $targetStatusName,
+                    $agentId,
+                    $targetAgentName,
+                    $systemTypeId,
+                    $data,
+                    $user,
+                    $auditLogger,
+                    &$count,
+                    &$accountIds,
+                ): void {
+                    foreach ($accounts as $account) {
+                        /** @var Account $account */
+                        $fromCampaignId = (int) $account->campaign_id;
+                        $fromCampaignName = $account->campaign?->name ?? "Campaign #{$fromCampaignId}";
+                        $fromStatusId = $account->entity_status_id;
+                        $fromStatusName = $account->entityStatus?->name;
+                        $fromAgentId = $account->assigned_agent_profile_id;
+                        $fromAgentName = $this->agentProfileLabel($account->assignedAgentProfile) ?: null;
 
-                    $actionCodeId = $data['entity_action_code_id'] ?? null;
+                        $toAgentId = $agentId;
+                        if ($toAgentId === null) {
+                            $agentStillValid = $fromAgentId && CampaignAssignment::query()
+                                ->where('campaign_id', $targetCampaign->id)
+                                ->where('agent_profile_id', $fromAgentId)
+                                ->exists();
+                            $toAgentId = $agentStillValid ? (int) $fromAgentId : null;
+                        }
 
-                    $activity = $account->activities()->create([
-                        'occurred_at' => now(),
-                        'activity_type_id' => $typeId,
-                        'actor_user_id' => $user->id,
-                        'agent_profile_id' => $user->agentProfile?->id,
-                        'assigned_agent_profile_id' => $account->assigned_agent_profile_id,
-                        'entity_status_id' => $data['entity_status_id'],
-                        'entity_action_code_id' => $actionCodeId,
-                        'classification' => $this->resolveActivityClassification($actionCodeId),
-                        'remarks' => $data['remarks'],
-                    ]);
+                        $toStatusId = $statusId ?? $fromStatusId;
 
-                    $this->syncAccountLastFromActivity($account, $activity, $user);
+                        $account->update([
+                            'campaign_id' => $targetCampaign->id,
+                            'assigned_agent_profile_id' => $toAgentId,
+                            'entity_status_id' => $toStatusId,
+                            'updated_by' => $user->id,
+                        ]);
 
-                    $auditLogger->log('account.bulk.status_updated', $activity, $account->campaign_id, [
-                        'bulk' => true,
-                        'account_id' => $account->id,
-                        'from_entity_status_id' => $fromStatusId,
-                        'to_entity_status_id' => $data['entity_status_id'],
-                        'from_entity_action_code_id' => $fromActionId,
-                        'to_entity_action_code_id' => $data['entity_action_code_id'] ?? null,
-                        'remarks' => $data['remarks'],
-                    ]);
+                        $changeLines = [];
+                        if ($fromCampaignId !== (int) $targetCampaign->id) {
+                            $changeLines[] = "Changed campaign to {$targetCampaignName}.";
+                        }
+                        if ($statusId && (int) $fromStatusId !== $statusId) {
+                            $changeLines[] = 'Changed status to '.($targetStatusName ?: "Status #{$statusId}").'.';
+                        }
+                        if ((int) ($fromAgentId ?? 0) !== (int) ($toAgentId ?? 0)) {
+                            $toAgentLabel = $toAgentId
+                                ? ($targetAgentName ?: $this->agentProfileLabel(AgentProfile::query()->find($toAgentId)) ?: "Agent #{$toAgentId}")
+                                : 'Unassigned';
+                            $changeLines[] = "Changed assignment to {$toAgentLabel}.";
+                        }
 
-                    $count++;
-                    $accountIds[] = $account->id;
-                }
-            });
+                        $remarks = trim($data['remarks']);
+                        if ($changeLines !== []) {
+                            $remarks .= ($remarks !== '' ? "\n\n" : '').implode("\n", $changeLines);
+                        }
+
+                        $activity = $account->activities()->create([
+                            'occurred_at' => now(),
+                            'activity_type_id' => $systemTypeId,
+                            'actor_user_id' => $user->id,
+                            'agent_profile_id' => $user->agentProfile?->id,
+                            'assigned_agent_profile_id' => $toAgentId,
+                            'entity_status_id' => $toStatusId,
+                            'entity_action_code_id' => $account->entity_action_code_id,
+                            'classification' => ActionCodeClassification::Neutral,
+                            'remarks' => $remarks,
+                        ]);
+
+                        $this->syncAccountLastFromActivity($account, $activity, $user);
+
+                        $auditLogger->log('account.bulk.assignment_updated', $activity, $account->campaign_id, [
+                            'bulk' => true,
+                            'account_id' => $account->id,
+                            'from_campaign_id' => $fromCampaignId,
+                            'to_campaign_id' => (int) $targetCampaign->id,
+                            'from_entity_status_id' => $fromStatusId,
+                            'to_entity_status_id' => $toStatusId,
+                            'from_assigned_agent_profile_id' => $fromAgentId,
+                            'to_assigned_agent_profile_id' => $toAgentId,
+                            'from_campaign_name' => $fromCampaignName,
+                            'from_status_name' => $fromStatusName,
+                            'from_agent_name' => $fromAgentName,
+                            'remarks' => $data['remarks'],
+                        ]);
+
+                        $count++;
+                        $accountIds[] = $account->id;
+                    }
+                });
         });
 
-        $auditLogger->log('accounts.bulk.status_updated', null, null, [
+        $auditLogger->log('accounts.bulk.assignment_updated', null, (int) $targetCampaign->id, [
             'scope' => $data['scope'],
             'count' => $count,
-            'entity_status_id' => $data['entity_status_id'],
-            'entity_action_code_id' => $data['entity_action_code_id'] ?? null,
+            'campaign_id' => (int) $targetCampaign->id,
+            'entity_status_id' => $statusId,
+            'assigned_agent_profile_id' => $agentId,
+            'entity_id' => $entityId,
             'remarks' => $data['remarks'],
             'filters' => $filters,
             'account_ids' => $data['scope'] === 'selected' ? ($data['account_ids'] ?? []) : $accountIds,
         ]);
 
         return redirect()->route('accounts.index', array_filter($filters, fn ($value) => $value !== null && $value !== ''))
-            ->with('success', "Updated status on {$count} account(s).");
+            ->with('success', "Updated assignment on {$count} account(s).");
     }
 
-    public function bulkStoreActivity(Request $request, AuditLogger $auditLogger): RedirectResponse
+    public function bulkStoreActivity(Request $request, AuditLogger $auditLogger, SmsQueueService $smsQueue): RedirectResponse
     {
         $data = $request->validate([
             'scope' => ['required', Rule::in(['selected', 'all'])],
@@ -969,7 +1007,7 @@ class AccountController extends Controller
             'account_ids.*' => ['integer', 'exists:accounts,id'],
             'occurred_at' => ['required', 'date'],
             'activity_type_id' => ['required', 'integer', 'exists:activity_types,id'],
-            'entity_status_id' => ['required', 'integer', 'exists:entity_statuses,id'],
+            'entity_status_id' => ['nullable', 'integer', 'exists:entity_statuses,id'],
             'entity_action_code_id' => ['nullable', 'integer', 'exists:entity_action_codes,id'],
             'entity_template_id' => ['nullable', 'integer', 'exists:entity_templates,id'],
             'reference_amount' => ['nullable', 'numeric'],
@@ -977,6 +1015,11 @@ class AccountController extends Controller
             'reference_time' => ['nullable', 'regex:/^\d{2}:\d{2}(:\d{2})?$/'],
             'reference_text' => ['nullable', 'string', 'max:5000'],
             'remarks' => ['required', 'string', 'max:5000'],
+            'queue_for_sms' => ['sometimes', 'boolean'],
+            'sms_recipient_scope' => ['nullable', Rule::in(['primary_mobile', 'all_mobiles'])],
+            'sms_target_mode' => ['nullable', Rule::in(SmsTargetMode::values())],
+            'sms_device_group_id' => ['nullable', 'integer', 'exists:sms_device_groups,id'],
+            'sms_device_id' => ['nullable', 'integer', 'exists:sms_devices,id'],
             'attachments' => ['nullable', 'array', 'max:10'],
             'attachments.*' => ['file', 'mimes:jpg,jpeg,png,gif,webp,pdf', 'max:5120'],
         ]);
@@ -990,9 +1033,19 @@ class AccountController extends Controller
 
         abort_unless($activityType, 422, 'Invalid activity type.');
 
+        $queueForSms = $request->boolean('queue_for_sms') && $activityType->code === 'sms_send';
+        $smsRecipientScope = $queueForSms
+            ? ($data['sms_recipient_scope'] ?? 'primary_mobile')
+            : null;
+        $smsTargeting = $queueForSms ? $this->validatedSmsTargeting($data) : null;
+
         $query = $this->bulkTargetQuery($request);
         $entityId = $this->assertSingleEntityId($query);
-        $this->assertEntityCatalogIds($entityId, $data['entity_status_id'], $data['entity_action_code_id'] ?? null);
+        $this->assertEntityCatalogIds(
+            $entityId,
+            $data['entity_status_id'] ?? null,
+            $data['entity_action_code_id'] ?? null,
+        );
 
         $templateId = $this->resolveActivityTemplateId(
             $entityId,
@@ -1003,6 +1056,12 @@ class AccountController extends Controller
         $template = $templateId
             ? EntityTemplate::query()->whereKey($templateId)->first()
             : null;
+
+        if ($queueForSms && trim((string) ($data['reference_text'] ?? '')) === '' && ! $template) {
+            throw ValidationException::withMessages([
+                'reference_text' => 'Message text (or a template) is required when queueing SMS.',
+            ]);
+        }
 
         /** @var User $user */
         $user = $request->user();
@@ -1021,6 +1080,8 @@ class AccountController extends Controller
 
         $count = 0;
         $accountIds = [];
+        $smsEntries = collect();
+        $skippedNoMobile = 0;
 
         try {
             DB::transaction(function () use (
@@ -1031,8 +1092,13 @@ class AccountController extends Controller
                 $templateId,
                 $template,
                 $attachmentBlueprints,
+                $queueForSms,
+                $smsRecipientScope,
+                $smsQueue,
                 &$count,
                 &$accountIds,
+                &$smsEntries,
+                &$skippedNoMobile,
             ): void {
                 (clone $query)
                     ->with([
@@ -1040,6 +1106,7 @@ class AccountController extends Controller
                         'assignedAgentProfile',
                         'entityStatus',
                         'entityActionCode',
+                        'contactInfos',
                     ])
                     ->orderBy('id')
                     ->chunkById(100, function (Collection $accounts) use (
@@ -1049,12 +1116,22 @@ class AccountController extends Controller
                         $templateId,
                         $template,
                         $attachmentBlueprints,
+                        $queueForSms,
+                        $smsRecipientScope,
+                        $smsQueue,
                         &$count,
                         &$accountIds,
+                        &$smsEntries,
+                        &$skippedNoMobile,
                     ): void {
                         foreach ($accounts as $account) {
                             /** @var Account $account */
-                            $actionCodeId = $data['entity_action_code_id'] ?? null;
+                            $statusId = $data['entity_status_id'] ?? $account->entity_status_id;
+                            $actionCodeId = $data['entity_action_code_id'] ?? $account->entity_action_code_id;
+
+                            if (! $statusId) {
+                                $this->failBulk('One or more accounts have no status to inherit. Select a status or set status on those accounts first.');
+                            }
 
                             $referenceText = $data['reference_text'] ?? null;
                             if ($template) {
@@ -1071,7 +1148,7 @@ class AccountController extends Controller
                                 'actor_user_id' => $user->id,
                                 'agent_profile_id' => $user->agentProfile?->id,
                                 'assigned_agent_profile_id' => $account->assigned_agent_profile_id,
-                                'entity_status_id' => $data['entity_status_id'],
+                                'entity_status_id' => $statusId,
                                 'entity_action_code_id' => $actionCodeId,
                                 'entity_template_id' => $templateId,
                                 'classification' => $this->resolveActivityClassification($actionCodeId),
@@ -1101,11 +1178,31 @@ class AccountController extends Controller
                                 'bulk' => true,
                                 'account_id' => $account->id,
                                 'activity_type_id' => $data['activity_type_id'],
-                                'entity_status_id' => $data['entity_status_id'],
-                                'entity_action_code_id' => $data['entity_action_code_id'] ?? null,
+                                'entity_status_id' => $statusId,
+                                'entity_action_code_id' => $actionCodeId,
                                 'entity_template_id' => $templateId,
                                 'remarks' => $data['remarks'],
                             ]);
+
+                            if ($queueForSms) {
+                                $recipients = $smsQueue->resolveBulkMobileRecipients(
+                                    $account,
+                                    $smsRecipientScope ?? 'primary_mobile',
+                                );
+
+                                if ($recipients->isEmpty()) {
+                                    $skippedNoMobile++;
+                                } else {
+                                    foreach ($recipients as $recipient) {
+                                        $smsEntries->push([
+                                            'account' => $account,
+                                            'activity' => $activity,
+                                            'message' => (string) $referenceText,
+                                            'recipient' => $recipient,
+                                        ]);
+                                    }
+                                }
+                            }
 
                             $count++;
                             $accountIds[] = $account->id;
@@ -1128,10 +1225,47 @@ class AccountController extends Controller
             'remarks' => $data['remarks'],
             'filters' => $filters,
             'account_ids' => $data['scope'] === 'selected' ? ($data['account_ids'] ?? []) : $accountIds,
+            'queue_for_sms' => $queueForSms,
+            'sms_recipient_scope' => $smsRecipientScope,
+            'skipped_no_mobile' => $skippedNoMobile,
         ]);
 
+        $success = "Added activity on {$count} account(s).";
+
+        if ($queueForSms && $smsEntries->isNotEmpty()) {
+            $batch = $smsQueue->enqueueBatch(
+                SmsBatchSource::AccountActivityBulk,
+                $user,
+                $smsEntries,
+                (string) ($data['reference_text'] ?? ''),
+                [
+                    'scope' => $data['scope'],
+                    'filters' => $filters,
+                    'account_ids' => $data['scope'] === 'selected' ? ($data['account_ids'] ?? []) : $accountIds,
+                    'sms_recipient_scope' => $smsRecipientScope,
+                    'skipped_no_mobile' => $skippedNoMobile,
+                ],
+                null,
+                $smsTargeting,
+            );
+
+            $auditLogger->log('sms.batch.enqueued', $batch, null, [
+                'source' => 'account_activity_bulk',
+                'total' => $batch->total,
+                'queued' => $batch->queued,
+                'failed' => $batch->failed,
+                'sms_recipient_scope' => $smsRecipientScope,
+            ]);
+
+            $success .= " Queued {$batch->queued} SMS (batch #{$batch->id}).";
+        }
+
+        if ($queueForSms && $skippedNoMobile > 0) {
+            $success .= " Skipped {$skippedNoMobile} account(s) with no valid mobile.";
+        }
+
         return redirect()->route('accounts.index', array_filter($filters, fn ($value) => $value !== null && $value !== ''))
-            ->with('success', "Added activity on {$count} account(s).");
+            ->with('success', $success);
     }
 
     public function export(Request $request, AuditLogger $auditLogger): StreamedResponse
@@ -1153,7 +1287,7 @@ class AccountController extends Controller
                 $account->campaign?->name,
                 $this->agentProfileLabel($account->assignedAgentProfile),
                 $account->product,
-                $account->activities_count,
+                $account->non_system_activities_count,
                 $account->positive_activity_count,
                 $account->negative_activity_count,
                 $account->neutral_activity_count,
@@ -1269,13 +1403,18 @@ class AccountController extends Controller
             $counts[$code] = (int) ($byCode[$code] ?? 0);
         }
 
-        $total = array_sum($counts);
-        $excludeSystem = $total - ($counts['system'] ?? 0);
+        $incomingTotal = 0;
+        foreach (ActivityType::INCOMING_CODES as $code) {
+            $incomingTotal += (int) ($counts[$code] ?? 0);
+        }
+
+        $total = max(0, array_sum($counts) - $incomingTotal);
+        $excludeSystem = max(0, $total - (int) ($counts['system'] ?? 0));
 
         return [
             'activity_counts' => $counts,
             'activity_total' => $total,
-            'activity_total_excluding_system' => max(0, $excludeSystem),
+            'activity_total_excluding_system' => $excludeSystem,
         ];
     }
 
@@ -1316,39 +1455,44 @@ class AccountController extends Controller
 
     private function syncAccountLastFromActivity(Account $account, AccountActivity $activity, User $user): void
     {
-        $updates = [
-            'updated_by' => $user->id,
-            'last_activity_type_id' => $activity->activity_type_id,
-            'last_activity_user_id' => $activity->actor_user_id,
-            'last_activity_agent_profile_id' => $activity->agent_profile_id,
-            'entity_status_id' => $activity->entity_status_id,
-        ];
+        $activity->loadMissing('activityType:id,code');
+        $isSystem = ($activity->activityType?->code ?? null) === 'system';
 
-        if ($activity->entity_action_code_id) {
-            $updates['entity_action_code_id'] = $activity->entity_action_code_id;
-        }
-        if ($activity->reference_amount !== null) {
-            $updates['last_reference_amount'] = $activity->reference_amount;
-        }
-        if ($activity->reference_date !== null) {
-            $updates['last_reference_date'] = $activity->reference_date;
-        }
-        if ($activity->reference_time !== null) {
-            $updates['last_reference_time'] = $activity->reference_time;
-        }
-        if ($activity->reference_text !== null) {
-            $updates['last_reference_text'] = $activity->reference_text;
-        }
-        if ($activity->reference_contact_info_id) {
-            $updates['last_reference_contact_info_id'] = $activity->reference_contact_info_id;
-        }
-        if ($activity->reference_address_id) {
-            $updates['last_reference_address_id'] = $activity->reference_address_id;
+        if (! $isSystem) {
+            $updates = [
+                'updated_by' => $user->id,
+                'last_activity_type_id' => $activity->activity_type_id,
+                'last_activity_user_id' => $activity->actor_user_id,
+                'last_activity_agent_profile_id' => $activity->agent_profile_id,
+                'entity_status_id' => $activity->entity_status_id,
+            ];
+
+            if ($activity->entity_action_code_id) {
+                $updates['entity_action_code_id'] = $activity->entity_action_code_id;
+            }
+            if ($activity->reference_amount !== null) {
+                $updates['last_reference_amount'] = $activity->reference_amount;
+            }
+            if ($activity->reference_date !== null) {
+                $updates['last_reference_date'] = $activity->reference_date;
+            }
+            if ($activity->reference_time !== null) {
+                $updates['last_reference_time'] = $activity->reference_time;
+            }
+            if ($activity->reference_text !== null) {
+                $updates['last_reference_text'] = $activity->reference_text;
+            }
+            if ($activity->reference_contact_info_id) {
+                $updates['last_reference_contact_info_id'] = $activity->reference_contact_info_id;
+            }
+            if ($activity->reference_address_id) {
+                $updates['last_reference_address_id'] = $activity->reference_address_id;
+            }
+
+            $account->update($updates);
         }
 
-        $account->update($updates);
-
-        $this->syncActivityCounts($account);
+        app(AccountActivityTotalsSync::class)->sync($account);
     }
 
     private function resolveActivityClassification(null|int|string $entityActionCodeId): ActionCodeClassification
@@ -1364,54 +1508,6 @@ class AccountController extends Controller
         }
 
         return ActionCodeClassification::tryFrom((string) $raw) ?? ActionCodeClassification::Neutral;
-    }
-
-    private function syncActivityCounts(Account $account): void
-    {
-        $totals = DB::table('account_activities')
-            ->where('account_id', $account->id)
-            ->whereNull('deleted_at')
-            ->selectRaw('COUNT(*) as aggregate, MAX(occurred_at) as last_at')
-            ->first();
-
-        $classificationCounts = DB::table('account_activities')
-            ->where('account_id', $account->id)
-            ->whereNull('deleted_at')
-            ->selectRaw('classification, COUNT(*) as aggregate')
-            ->groupBy('classification')
-            ->pluck('aggregate', 'classification');
-
-        $byCode = DB::table('account_activities')
-            ->join('activity_types', 'activity_types.id', '=', 'account_activities.activity_type_id')
-            ->where('account_activities.account_id', $account->id)
-            ->whereNull('account_activities.deleted_at')
-            ->selectRaw('activity_types.code, COUNT(*) as aggregate')
-            ->groupBy('activity_types.code')
-            ->pluck('aggregate', 'code');
-
-        $smsOut = (int) ($byCode['sms_send'] ?? 0);
-        $smsIn = (int) ($byCode['sms_receive'] ?? 0);
-        $callSuccess = 0;
-        foreach (ActivityType::SUCCESS_CODES as $code) {
-            $callSuccess += (int) ($byCode[$code] ?? 0);
-        }
-        $callFailed = 0;
-        foreach (ActivityType::FAILED_CODES as $code) {
-            $callFailed += (int) ($byCode[$code] ?? 0);
-        }
-
-        $account->forceFill([
-            'activities_count' => (int) ($totals->aggregate ?? 0),
-            'last_activity_at' => $totals->last_at ?? null,
-            'positive_activity_count' => (int) ($classificationCounts[ActionCodeClassification::Positive->value] ?? 0),
-            'negative_activity_count' => (int) ($classificationCounts[ActionCodeClassification::Negative->value] ?? 0),
-            'neutral_activity_count' => (int) ($classificationCounts[ActionCodeClassification::Neutral->value] ?? 0),
-            'sms_out_count' => $smsOut,
-            'sms_in_count' => $smsIn,
-            'call_success_count' => $callSuccess,
-            'call_failed_count' => $callFailed,
-            'call_total_count' => $callSuccess + $callFailed,
-        ])->save();
     }
 
     private function hydrateLastReferenceRelations(Account $account): void
@@ -2144,5 +2240,102 @@ class AccountController extends Controller
     private function failBulk(string $message, string $key = 'bulk'): never
     {
         throw ValidationException::withMessages([$key => $message]);
+    }
+
+    /**
+     * @return array{smsDeviceGroups: list<array{id: int, name: string}>, smsDevices: list<array{id: int, name: string, group_name: ?string}>}
+     */
+    private function smsTargetingProps(): array
+    {
+        $groups = SmsDeviceGroup::query()
+            ->where('enabled', true)
+            ->whereHas('devices', fn ($q) => $q->where('enabled', true)->whereNotNull('runtime_device_id'))
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get(['id', 'name'])
+            ->map(fn (SmsDeviceGroup $g) => [
+                'id' => $g->id,
+                'name' => $g->name,
+            ])
+            ->values()
+            ->all();
+
+        $devices = SmsDevice::query()
+            ->with('group:id,name')
+            ->where('enabled', true)
+            ->whereNotNull('runtime_device_id')
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get(['id', 'name', 'sms_device_group_id', 'runtime_device_id'])
+            ->map(fn (SmsDevice $d) => [
+                'id' => $d->id,
+                'name' => $d->group?->name
+                    ? "{$d->name} ({$d->group->name})"
+                    : $d->name,
+                'group_name' => $d->group?->name,
+            ])
+            ->values()
+            ->all();
+
+        return [
+            'smsDeviceGroups' => $groups,
+            'smsDevices' => $devices,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array{mode: SmsTargetMode, sms_device_group_id: ?int, sms_device_id: ?int}
+     */
+    private function validatedSmsTargeting(array $data): array
+    {
+        $modeValue = $data['sms_target_mode'] ?? null;
+        $mode = is_string($modeValue) ? SmsTargetMode::tryFrom($modeValue) : null;
+
+        if (! $mode) {
+            throw ValidationException::withMessages([
+                'sms_target_mode' => 'Choose round robin to a group or a specific device.',
+            ]);
+        }
+
+        if ($mode === SmsTargetMode::GroupRoundRobin) {
+            $groupId = (int) ($data['sms_device_group_id'] ?? 0);
+            $group = SmsDeviceGroup::query()
+                ->whereKey($groupId)
+                ->where('enabled', true)
+                ->whereHas('devices', fn ($q) => $q->where('enabled', true)->whereNotNull('runtime_device_id'))
+                ->first();
+
+            if (! $group) {
+                throw ValidationException::withMessages([
+                    'sms_device_group_id' => 'Select an enabled device group with at least one enabled device.',
+                ]);
+            }
+
+            return [
+                'mode' => $mode,
+                'sms_device_group_id' => $group->id,
+                'sms_device_id' => null,
+            ];
+        }
+
+        $deviceId = (int) ($data['sms_device_id'] ?? 0);
+        $device = SmsDevice::query()
+            ->whereKey($deviceId)
+            ->where('enabled', true)
+            ->whereNotNull('runtime_device_id')
+            ->first();
+
+        if (! $device) {
+            throw ValidationException::withMessages([
+                'sms_device_id' => 'Select an enabled SMS device with a runtime ID.',
+            ]);
+        }
+
+        return [
+            'mode' => $mode,
+            'sms_device_group_id' => null,
+            'sms_device_id' => $device->id,
+        ];
     }
 }
